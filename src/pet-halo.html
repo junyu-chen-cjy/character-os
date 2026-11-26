@@ -3,60 +3,48 @@
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data: file:;">
-<title>Character OS Quick Controls</title>
+<title>Character OS Quick Bar</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
   color-scheme: light dark;
-  --surface: rgba(250, 250, 252, 0.86);
-  --surface-elevated: rgba(255, 255, 255, 0.72);
-  --surface-hover: rgba(0, 0, 0, 0.055);
-  --surface-active: rgba(0, 0, 0, 0.09);
-  --border: rgba(0, 0, 0, 0.09);
-  --inner-shine: inset 0 0.5px 0 rgba(255, 255, 255, 0.78);
-  --divider: rgba(0, 0, 0, 0.075);
+  --surface: rgba(252, 252, 254, 0.96);
+  --surface-hover: rgba(0, 0, 0, 0.06);
+  --surface-active: rgba(0, 0, 0, 0.10);
+  --border: rgba(0, 0, 0, 0.11);
+  --divider: rgba(0, 0, 0, 0.08);
   --ink: #141417;
-  --ink-secondary: #52525b;
-  --ink-muted: #86868e;
+  --ink-secondary: #4a4a52;
+  --ink-muted: #7c7c85;
   --accent: #0066cc;
-  --accent-soft: rgba(0, 102, 204, 0.11);
-  --dnd-active: #5e5ce6;
-  --dnd-soft: rgba(94, 92, 230, 0.13);
   --ok: #1f9d55;
   --warn: #d97706;
   --hot: #dc2626;
-  --track: rgba(0, 0, 0, 0.08);
+  --track: rgba(0, 0, 0, 0.085);
   --codex: #7c5cff;
   --antigravity: #0ea5e9;
-  --gemini: #4f46e5;
-  --shadow: 0 10px 28px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.07);
+  --shadow: 0 8px 22px rgba(0, 0, 0, 0.16), 0 1px 4px rgba(0, 0, 0, 0.08);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --surface: rgba(28, 28, 32, 0.86);
-    --surface-elevated: rgba(255, 255, 255, 0.055);
-    --surface-hover: rgba(255, 255, 255, 0.085);
-    --surface-active: rgba(255, 255, 255, 0.13);
-    --border: rgba(255, 255, 255, 0.12);
-    --inner-shine: inset 0 0.5px 0 rgba(255, 255, 255, 0.12);
-    --divider: rgba(255, 255, 255, 0.09);
+    --surface: rgba(28, 28, 32, 0.96);
+    --surface-hover: rgba(255, 255, 255, 0.09);
+    --surface-active: rgba(255, 255, 255, 0.14);
+    --border: rgba(255, 255, 255, 0.14);
+    --divider: rgba(255, 255, 255, 0.095);
     --ink: #f5f5f7;
-    --ink-secondary: #a1a1aa;
-    --ink-muted: #71717a;
+    --ink-secondary: #b6b6bf;
+    --ink-muted: #84848e;
     --accent: #4da3ff;
-    --accent-soft: rgba(77, 163, 255, 0.16);
-    --dnd-active: #7d7aff;
-    --dnd-soft: rgba(125, 122, 255, 0.18);
     --ok: #34d399;
     --warn: #fbbf24;
     --hot: #f87171;
-    --track: rgba(255, 255, 255, 0.11);
+    --track: rgba(255, 255, 255, 0.12);
     --codex: #a78bfa;
     --antigravity: #38bdf8;
-    --gemini: #818cf8;
-    --shadow: 0 12px 30px rgba(0, 0, 0, 0.44), 0 2px 6px rgba(0, 0, 0, 0.28);
+    --shadow: 0 10px 26px rgba(0, 0, 0, 0.50), 0 1px 4px rgba(0, 0, 0, 0.30);
   }
 }
 
@@ -72,26 +60,26 @@ html, body {
 }
 
 body {
-  padding: 6px 8px 10px;
+  padding: 5px 7px 9px;
 }
 
 .halo-shell {
   width: 100%;
-  border-radius: 14px;
+  border-radius: 12px;
   background: var(--surface);
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
   border: 1px solid var(--border);
-  box-shadow: var(--shadow), var(--inner-shine);
+  box-shadow: var(--shadow);
   overflow: hidden;
   opacity: 0;
-  transform: translateY(-4px) scale(0.975);
-  transition: opacity 150ms cubic-bezier(0.22, 1, 0.36, 1),
-              transform 165ms cubic-bezier(0.22, 1, 0.36, 1);
+  transform: translateY(-3px) scale(0.98);
+  transition: opacity 130ms cubic-bezier(0.22, 1, 0.36, 1),
+              transform 150ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .halo-shell.flipped-above {
-  transform: translateY(4px) scale(0.975);
+  transform: translateY(3px) scale(0.98);
 }
 
 .halo-shell.is-visible {
@@ -99,117 +87,27 @@ body {
   transform: translateY(0) scale(1);
 }
 
-/* ── Quota Strip ── */
+/* ── Compact Quota Strip ── */
 .quota-panel {
-  padding: 8px 10px 7px;
+  padding: 7px 9px 6px;
   border-bottom: 1px solid var(--divider);
   display: flex;
   flex-direction: column;
-  gap: 6px;
-}
-
-.quota-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-}
-
-.quota-title-group {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.quota-eyebrow {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--ink-muted);
-}
-
-.session-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--ink-secondary);
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: var(--surface-elevated);
-}
-
-.session-pill[hidden] { display: none; }
-
-.session-pill-dot {
-  width: 5.5px;
-  height: 5.5px;
-  border-radius: 50%;
-  background: var(--ok);
-}
-
-.session-pill.has-approval .session-pill-dot {
-  background: var(--warn);
-}
-
-.pin-toggle {
-  appearance: none;
-  border: 0;
-  background: transparent;
-  color: var(--ink-muted);
-  font: inherit;
-  font-size: 10px;
-  font-weight: 500;
-  padding: 2px 6px;
-  border-radius: 6px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  transition: background 120ms ease, color 120ms ease;
-}
-
-.pin-toggle:hover {
-  background: var(--surface-hover);
-  color: var(--ink);
-}
-
-.pin-toggle.is-pinned {
-  color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.pin-toggle svg {
-  width: 11px;
-  height: 11px;
-  flex-shrink: 0;
-}
-
-.quota-list {
-  display: flex;
-  flex-direction: column;
   gap: 5px;
+  cursor: pointer;
 }
 
-.quota-item {
+.quota-panel:hover {
+  background: var(--surface-hover);
+}
+
+.quota-row {
   display: flex;
   flex-direction: column;
   gap: 3px;
-  padding: 4px 6px;
-  margin: 0 -4px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background 120ms ease;
 }
 
-.quota-item:hover {
-  background: var(--surface-hover);
-}
-
-.quota-item-top {
+.quota-row-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -225,8 +123,8 @@ body {
 }
 
 .quota-icon {
-  width: 13px;
-  height: 13px;
+  width: 12px;
+  height: 12px;
   border-radius: 3px;
   object-fit: contain;
   flex-shrink: 0;
@@ -241,20 +139,10 @@ body {
   text-overflow: ellipsis;
 }
 
-.quota-scope {
-  font-size: 9.5px;
-  font-weight: 500;
-  color: var(--ink-muted);
-  padding: 0.5px 4px;
-  border-radius: 4px;
-  background: var(--surface-elevated);
-  flex-shrink: 0;
-}
-
 .quota-readout {
   display: flex;
   align-items: baseline;
-  gap: 5px;
+  gap: 4px;
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
 }
@@ -268,14 +156,15 @@ body {
 .quota-pct.sev-warn { color: var(--warn); }
 .quota-pct.sev-hot { color: var(--hot); }
 
-.quota-meta {
-  font-size: 9.5px;
+.quota-meta,
+.quota-none {
+  font-size: 10px;
   color: var(--ink-muted);
   white-space: nowrap;
 }
 
 .quota-bar {
-  height: 3.5px;
+  height: 3px;
   border-radius: 999px;
   background: var(--track);
   overflow: hidden;
@@ -284,85 +173,23 @@ body {
 .quota-bar-fill {
   height: 100%;
   border-radius: 999px;
-  background: var(--accent);
-  transition: width 180ms ease;
+  transition: width 160ms ease;
 }
 
 .quota-bar-fill.pv-codex { background: var(--codex); }
 .quota-bar-fill.pv-antigravity { background: var(--antigravity); }
-.quota-bar-fill.pv-gemini { background: var(--gemini); }
 .quota-bar-fill.sev-warn { background: var(--warn); }
 .quota-bar-fill.sev-hot { background: var(--hot); }
-.quota-item.is-stale { opacity: 0.68; }
 
-.quota-empty {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 3px 2px;
-  color: var(--ink-muted);
-  font-size: 10.5px;
-  cursor: pointer;
-}
-
-.quota-empty:hover {
-  color: var(--ink-secondary);
-}
-
-/* ── Clients Inline Popover ── */
-.clients-drawer {
-  border-bottom: 1px solid var(--divider);
-  padding: 5px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  background: var(--surface-elevated);
-}
-
-.clients-drawer[hidden] { display: none; }
-
-.client-item {
-  appearance: none;
-  border: 0;
-  background: transparent;
-  width: 100%;
-  padding: 6px 8px;
-  border-radius: 7px;
-  color: var(--ink);
-  font: inherit;
-  font-size: 11.5px;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  cursor: pointer;
-  text-align: left;
-  transition: background 100ms ease;
-}
-
-.client-item:hover {
-  background: var(--surface-hover);
-}
-
-.client-item:active {
-  background: var(--surface-active);
-}
-
-.client-item-tag {
-  font-size: 9.5px;
-  color: var(--ink-muted);
-  font-weight: 500;
-}
-
-/* ── Quick Actions Dock ── */
+/* ── 4 Direct Quick Actions ── */
 .dock-row {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: 0.92fr 0.9fr 1.22fr 1.06fr;
   gap: 2px;
-  padding: 5px 6px;
+  padding: 4px 5px;
 }
+
+[hidden] { display: none !important; }
 
 .dock-btn {
   position: relative;
@@ -370,8 +197,8 @@ body {
   border: 0;
   background: transparent;
   color: var(--ink-secondary);
-  border-radius: 9px;
-  padding: 6px 1px 5px;
+  border-radius: 8px;
+  padding: 6px 2px 5px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -379,7 +206,7 @@ body {
   gap: 3px;
   cursor: pointer;
   font: inherit;
-  transition: background 120ms ease, color 120ms ease, transform 100ms ease;
+  transition: background 110ms ease, color 110ms ease, transform 90ms ease;
 }
 
 .dock-btn:hover {
@@ -392,28 +219,22 @@ body {
   transform: scale(0.96);
 }
 
-.dock-btn.is-active {
-  color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.dock-btn.is-dnd {
-  color: var(--dnd-active);
-  background: var(--dnd-soft);
-}
-
-.dock-btn svg {
-  width: 15px;
-  height: 15px;
-  stroke-width: 1.65;
+.dock-btn svg,
+.dock-btn img {
+  width: 14px;
+  height: 14px;
   flex-shrink: 0;
 }
 
+.dock-btn img {
+  border-radius: 3px;
+  object-fit: contain;
+}
+
 .dock-label {
-  font-size: 9.5px;
-  font-weight: 500;
-  line-height: 1.1;
-  letter-spacing: -0.01em;
+  font-size: 10px;
+  font-weight: 550;
+  line-height: 1.15;
   white-space: nowrap;
   max-width: 100%;
   overflow: hidden;
@@ -422,65 +243,35 @@ body {
 
 .dock-badge-dot {
   position: absolute;
-  top: 5px;
-  right: 10px;
-  width: 5.5px;
-  height: 5.5px;
+  top: 4px;
+  right: 9px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: var(--ok);
 }
 
-.dock-badge-dot.warn {
+.dock-badge-dot.has-approval {
   background: var(--warn);
 }
 
 .dock-badge-dot[hidden] { display: none; }
 
 @media (prefers-reduced-motion: reduce) {
-  .halo-shell, .dock-btn, .quota-bar-fill {
+  .halo-shell,
+  .quota-bar-fill,
+  .dock-btn {
     transition: none;
   }
 }
 </style>
 </head>
 <body>
-  <div id="haloShell" class="halo-shell" role="toolbar" aria-label="Character OS Quick Controls">
-    <section id="quotaPanel" class="quota-panel">
-      <div class="quota-head">
-        <div class="quota-title-group">
-          <span id="quotaEyebrow" class="quota-eyebrow">AI Quotas</span>
-          <span id="sessionPill" class="session-pill" hidden>
-            <span class="session-pill-dot"></span>
-            <span id="sessionPillText"></span>
-          </span>
-        </div>
-        <button id="pinToggle" class="pin-toggle" type="button">
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <circle cx="8" cy="8" r="5.5"></circle>
-            <circle cx="8" cy="8" r="2.2"></circle>
-          </svg>
-          <span id="pinToggleLabel">Hover</span>
-        </button>
-      </div>
-      <div id="quotaList" class="quota-list"></div>
-    </section>
-
-    <div id="clientsDrawer" class="clients-drawer" hidden></div>
-
-    <div class="dock-row">
-      <button id="btnWorkspace" class="dock-btn" type="button">
-        <span id="workspaceBadge" class="dock-badge-dot" hidden></span>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <rect x="3" y="3" width="7.5" height="7.5" rx="1.8"></rect>
-          <rect x="13.5" y="3" width="7.5" height="7.5" rx="1.8"></rect>
-          <rect x="3" y="13.5" width="7.5" height="7.5" rx="1.8"></rect>
-          <rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.8"></rect>
-        </svg>
-        <span id="lblWorkspace" class="dock-label">Workspace</span>
-      </button>
-
+  <div id="haloShell" class="halo-shell" role="region" aria-label="Character OS quick actions">
+    <div id="quotaPanel" class="quota-panel"></div>
+    <div class="dock-row" role="toolbar" aria-label="Quick actions">
       <button id="btnCommand" class="dock-btn" type="button">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="m7 9 4 3-4 3"></path>
           <path d="M13 15h4"></path>
           <rect x="3" y="4" width="18" height="16" rx="3"></rect>
@@ -488,31 +279,35 @@ body {
         <span id="lblCommand" class="dock-label">Command</span>
       </button>
 
-      <button id="btnClients" class="dock-btn" type="button" aria-expanded="false">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <rect x="3" y="5" width="18" height="14" rx="2.5"></rect>
-          <path d="M8 9h8"></path>
-          <path d="M8 13h5"></path>
+      <button id="btnCodex" class="dock-btn" type="button">
+        <img id="icoCodex" alt="" hidden>
+        <svg id="svgCodex" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="16 18 22 12 16 6"></polyline>
+          <polyline points="8 6 2 12 8 18"></polyline>
         </svg>
-        <span id="lblClients" class="dock-label">Clients</span>
+        <span class="dock-label">Codex</span>
       </button>
 
-      <button id="btnDnd" class="dock-btn" type="button" aria-pressed="false">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M20.4 14.8A8.5 8.5 0 0 1 9.2 3.6a8.5 8.5 0 1 0 11.2 11.2Z"></path>
+      <button id="btnAntigravity" class="dock-btn" type="button">
+        <img id="icoAntigravity" alt="" hidden>
+        <svg id="svgAntigravity" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 3 4 20h4.2l3.8-8.2L15.8 20H20L12 3Z"></path>
         </svg>
-        <span id="lblDnd" class="dock-label">Quiet</span>
+        <span class="dock-label">Antigravity</span>
       </button>
 
-      <button id="btnSettings" class="dock-btn" type="button">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="12" cy="12" r="3"></circle>
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"></path>
+      <button id="btnWorkspace" class="dock-btn" type="button">
+        <span id="workspaceBadge" class="dock-badge-dot" hidden></span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3.5" y="3.5" width="7" height="7" rx="1.6"></rect>
+          <rect x="13.5" y="3.5" width="7" height="7" rx="1.6"></rect>
+          <rect x="3.5" y="13.5" width="7" height="7" rx="1.6"></rect>
+          <rect x="13.5" y="13.5" width="7" height="7" rx="1.6"></rect>
         </svg>
-        <span id="lblSettings" class="dock-label">Settings</span>
+        <span id="lblWorkspace" class="dock-label">Workspace</span>
       </button>
     </div>
   </div>
-  <script src="./pet-halo-renderer.js"></script>
+  <script src="pet-halo-renderer.js"></script>
 </body>
 </html>

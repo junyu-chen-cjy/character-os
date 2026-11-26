@@ -4,6 +4,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 const snapshotListeners = new Set();
 const langListeners = new Set();
+const selectViewListeners = new Set();
 const quickIntentListeners = new Set();
 const quickEntriesListeners = new Set();
 const quickDismissedListeners = new Set();
@@ -36,6 +37,12 @@ ipcRenderer.on("dashboard:session-snapshot", (_event, snapshot) => {
 ipcRenderer.on("dashboard:lang-change", (_event, payload) => {
   for (const cb of langListeners) {
     try { cb(payload); } catch (err) { console.warn("dashboard lang listener threw:", err); }
+  }
+});
+
+ipcRenderer.on("dashboard:select-view", (_event, view) => {
+  for (const cb of selectViewListeners) {
+    try { cb(view); } catch (err) { console.warn("dashboard select-view listener threw:", err); }
   }
 });
 
@@ -92,6 +99,11 @@ contextBridge.exposeInMainWorld("dashboardAPI", {
     if (typeof cb !== "function") return () => {};
     langListeners.add(cb);
     return () => langListeners.delete(cb);
+  },
+  onSelectView: (cb) => {
+    if (typeof cb !== "function") return () => {};
+    selectViewListeners.add(cb);
+    return () => selectViewListeners.delete(cb);
   },
   ...quickModeApi,
 });

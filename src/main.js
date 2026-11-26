@@ -2984,8 +2984,8 @@ const openDashboardSessionFolder = createSessionFolderOpener({
 });
 
 const _dashboard = require("./dashboard")({
-  defaultWidth: 960,
-  defaultHeight: 680,
+  defaultWidth: 880,
+  defaultHeight: 620,
   get lang() { return lang; },
   t: (key) => translate(key),
   getSessionSnapshot: () => _state.buildSessionSnapshot(),
@@ -3047,6 +3047,7 @@ const _petHalo = initPetHalo({
   getMiniTransitioning: () => _mini.getMiniTransitioning(),
   getSessionSnapshot: () => _state.buildSessionSnapshot(),
   getPendingPermissions: () => pendingPermissions,
+  getAgentIconUrl: (agentId) => getAgentIconUrl(agentId),
   getI18n: () => getDashboardI18nPayload(),
   getLang: () => lang,
   t: (key) => translate(key),
@@ -4677,6 +4678,7 @@ function showResumeInput(t) {
 
 const chatWindow = require("./chat-window").createChatWindow({
   app, BrowserWindow, ipcMain, nativeTheme, safeStorage, shell,
+  getLang: () => lang,
 });
 app.on("before-quit", chatWindow.stop);
 
@@ -4934,6 +4936,7 @@ const settingsEffectRouter = createSettingsEffectRouter({
   sendSessionHudI18n: () => sendSessionHudI18n(),
   syncWindowTitles: () => {
     settingsWindowRuntime.applyTitleToWindow();
+    chatWindow.syncLang?.();
     // syncLocalization pushes BOTH the native title AND fresh renderer state
     // (dictionary/lang), so an external language change from Settings keeps
     // the tutorial body, buttons, and document.title in sync with the new

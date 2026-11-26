@@ -45,25 +45,22 @@ const wsStatusDotEl = document.getElementById("wsStatusDot");
 const wsNavEl = document.getElementById("wsNav");
 const wsBtnCommandEl = document.getElementById("wsBtnCommand");
 const wsLblCommandEl = document.getElementById("wsLblCommand");
-const wsClientButtonsEl = document.getElementById("wsClientButtons");
-const wsBtnDndEl = document.getElementById("wsBtnDnd");
-const wsLblDndEl = document.getElementById("wsLblDnd");
+const wsBtnCodexEl = document.getElementById("wsBtnCodex");
+const wsBtnAntigravityEl = document.getElementById("wsBtnAntigravity");
 const wsBtnSettingsEl = document.getElementById("wsBtnSettings");
+const wsLblSettingsEl = document.getElementById("wsLblSettings");
+const wsQuotasPanelEl = document.getElementById("wsQuotasPanel");
 const wsQuotaTitleEl = document.getElementById("wsQuotaTitle");
-const wsBtnPinQuotaEl = document.getElementById("wsBtnPinQuota");
-const wsQuotaAgentSubheadEl = document.getElementById("wsQuotaAgentSubhead");
+const wsQuotaMissingRowsEl = document.getElementById("wsQuotaMissingRows");
 const wsQuotaFallbackEl = document.getElementById("wsQuotaFallback");
-const wsWebServicesEl = document.getElementById("wsWebServices");
-const wsSystemTitleEl = document.getElementById("wsSystemTitle");
+const wsRuntimeTitleEl = document.getElementById("wsRuntimeTitle");
 const wsBtnManageAgentsEl = document.getElementById("wsBtnManageAgents");
-const wsSystemKvEl = document.getElementById("wsSystemKv");
-const wsAgentHealthEl = document.getElementById("wsAgentHealth");
+const wsRuntimeListEl = document.getElementById("wsRuntimeList");
 
 let workspaceView = "overview";
 let workspaceCtx = null;
 let workspaceCtxPending = false;
 let lastWorkspaceRailSig = "";
-let lastClientButtonsSig = "";
 
 const WS_STRINGS = {
   en: {
@@ -71,26 +68,17 @@ const WS_STRINGS = {
     navOverview: "Overview",
     navSessions: "Sessions",
     navProjects: "Projects",
-    navServices: "Quotas & System",
+    navQuotas: "Quotas",
     cmdButton: "Command",
-    dndOff: "Quiet",
-    dndOn: "DND On",
+    settingsButton: "Settings",
     quotasTitle: "AI Service Quotas",
-    pinAlways: "Pinned",
-    pinHover: "On Hover",
-    codingAgents: "Coding Agents",
-    webClients: "Official Web & Desktop Apps",
-    quotaFallback: "No live Coding Agent quota telemetry yet. Start a Codex or Antigravity turn to sync real usage.",
-    webQuotaUnavailable: "Web / App · Official quota not exposed locally",
-    openApp: "Open",
-    systemTitle: "System & Runtime",
+    quotaNoData: "No data",
+    quotaFallback: "No live quota telemetry yet.",
+    runtimeTitle: "Connections",
     manageAgents: "Manage",
-    sysDevice: "Device",
-    sysMemory: "Memory",
-    sysUptime: "Uptime",
-    sysBridge: "Local Bridge",
-    sysListening: "127.0.0.1:{port} · Active",
-    sysStarting: "Starting…",
+    localService: "Local State Service",
+    serviceRunning: "Running · Port {port}",
+    serviceOffline: "Unavailable",
     agentReady: "Connected",
     agentPaused: "Paused",
     agentUninstalled: "Hooks off",
@@ -100,43 +88,36 @@ const WS_STRINGS = {
     projectsEmpty: "No project directories recorded yet.",
     projectActiveCount: "{n} active",
     projectRecentCount: "{n} recent",
-    remainingLabel: "{pct}% left",
+    focusSession: "Focus",
+    remainingShort: "{pct}% left",
   },
   zh: {
     workspaceTitle: "工作台",
     navOverview: "总览",
-    navSessions: "会话与任务",
-    navProjects: "项目目录",
-    navServices: "额度与系统",
+    navSessions: "会话",
+    navProjects: "项目",
+    navQuotas: "额度",
     cmdButton: "指令",
-    dndOff: "免打扰",
-    dndOn: "免打扰中",
-    quotasTitle: "AI 服务与额度",
-    pinAlways: "常驻桌宠旁",
-    pinHover: "仅悬停显示",
-    codingAgents: "Coding Agent 额度",
-    webClients: "官方网页与桌面端",
-    quotaFallback: "暂无实时 Coding Agent 额度数据。运行 Codex 或 Antigravity 会话后将自动同步真实余量。",
-    webQuotaUnavailable: "网页 / 客户端 · 官方未开放本机额度接口",
-    openApp: "唤起",
-    systemTitle: "本机与运行状态",
+    settingsButton: "设置",
+    quotasTitle: "AI 服务额度",
+    quotaNoData: "暂无数据",
+    quotaFallback: "暂无实时额度数据。",
+    runtimeTitle: "服务与连接",
     manageAgents: "管理",
-    sysDevice: "本机架构",
-    sysMemory: "可用内存",
-    sysUptime: "运行时间",
-    sysBridge: "状态服务",
-    sysListening: "127.0.0.1:{port} · 正常",
-    sysStarting: "启动中…",
-    agentReady: "已连接",
+    localService: "本地状态服务",
+    serviceRunning: "运行中 · 端口 {port}",
+    serviceOffline: "未连接",
+    agentReady: "已启用",
     agentPaused: "已暂停",
-    agentUninstalled: "未装 Hook",
+    agentUninstalled: "未安装",
     approvalsTitle: "待处理审批 ({n})",
-    revealBubble: "显示气泡",
+    revealBubble: "显示审批",
     projectsTitle: "项目目录",
     projectsEmpty: "暂无已记录的本地项目目录。",
     projectActiveCount: "{n} 个活跃会话",
     projectRecentCount: "{n} 条近期记录",
-    remainingLabel: "剩余 {pct}%",
+    focusSession: "跳转",
+    remainingShort: "剩余 {pct}%",
   },
 };
 
@@ -2604,12 +2585,142 @@ function appendProjectsSection(fragment, sessions) {
     if (focusable) {
       const jumpBtn = document.createElement("button");
       jumpBtn.type = "button";
-      jumpBtn.textContent = "Focus";
+      jumpBtn.textContent = wt("focusSession");
       jumpBtn.addEventListener("click", () => window.dashboardAPI.focusSession(focusable.id));
       actions.appendChild(jumpBtn);
     }
 
     card.appendChild(actions);
+    grid.appendChild(card);
+  }
+
+  section.appendChild(grid);
+  fragment.appendChild(section);
+}
+
+function summarizeProviderQuota(accountQuota, providerKey, fields, now) {
+  const sources = Array.isArray(accountQuota) ? accountQuota : [];
+  let best = null;
+  for (const src of sources) {
+    const provider = src && src[providerKey];
+    const group = provider && provider.group;
+    if (!group) continue;
+    for (const [field, fallbackWin] of fields) {
+      const raw = group[field];
+      if (!raw || typeof raw !== "object") continue;
+      const expired = raw.expired === true || (Number.isFinite(raw.resetAt) && raw.resetAt <= now);
+      const used = expired ? 0 : Math.max(0, Math.min(100, Number(raw.usedPercent) || 0));
+      const remaining = Math.max(0, Math.min(100, Math.round(100 - used)));
+      const resetStyle = quotaResetStyle(raw, Number(raw.windowMinutes) >= 1440 ? "date" : "countdown");
+      const resetText = (!expired && Number.isFinite(raw.resetAt))
+        ? (resetStyle === "date"
+          ? t("dashboardQuotaResetOn").replace("{date}", formatResetDate(raw.resetAt))
+          : t("dashboardQuotaResetIn").replace("{time}", formatResetIn(raw.resetAt)))
+        : "";
+      const item = {
+        used,
+        remaining,
+        windowLabel: formatQuotaWindowLabel(raw, t(fallbackWin)),
+        resetText,
+      };
+      if (!best || item.used > best.used) best = item;
+    }
+  }
+  return best;
+}
+
+function appendOverviewQuotasSection(fragment, now) {
+  const section = document.createElement("section");
+  section.className = "group";
+  section.appendChild(createText("h2", "group-title", wt("quotasTitle")));
+
+  const grid = document.createElement("div");
+  grid.className = "overview-quotas-grid";
+
+  const icons = (snapshot && snapshot.quotaAgentIcons) || {};
+  const providers = [
+    {
+      name: "Codex",
+      color: "var(--id-codex-outer, #7c5cff)",
+      iconUrl: icons.codexQuota || "",
+      summary: summarizeProviderQuota(
+        snapshot.accountQuota,
+        "codexQuota",
+        [["codexFiveHour", "dashboardQuotaFiveHour"], ["codexWeekly", "dashboardQuotaWeekly"]],
+        now
+      ),
+    },
+    {
+      name: "Antigravity",
+      color: "var(--id-antigravity-outer, #0ea5e9)",
+      iconUrl: icons.antigravityQuota || "",
+      summary: summarizeProviderQuota(
+        snapshot.accountQuota,
+        "antigravityQuota",
+        [
+          ["geminiFiveHour", "dashboardQuotaFiveHour"],
+          ["geminiWeekly", "dashboardQuotaWeekly"],
+          ["thirdPartyFiveHour", "dashboardQuotaFiveHour"],
+          ["thirdPartyWeekly", "dashboardQuotaWeekly"],
+        ],
+        now
+      ),
+    },
+  ];
+
+  for (const item of providers) {
+    const card = document.createElement("div");
+    card.className = "overview-quota-card";
+    card.addEventListener("click", () => {
+      workspaceView = "quotas";
+      render({ force: true });
+    });
+
+    const top = document.createElement("div");
+    top.className = "overview-quota-top";
+
+    const nameEl = document.createElement("span");
+    nameEl.className = "overview-quota-name";
+    if (item.iconUrl) {
+      const img = document.createElement("img");
+      img.src = item.iconUrl;
+      img.alt = "";
+      img.addEventListener("error", () => img.remove(), { once: true });
+      nameEl.appendChild(img);
+    }
+    nameEl.appendChild(document.createTextNode(item.name));
+
+    const valEl = createText(
+      "span",
+      `overview-quota-val${item.summary ? "" : " is-empty"}`,
+      item.summary ? wt("remainingShort").replace("{pct}", item.summary.remaining) : wt("quotaNoData")
+    );
+    top.append(nameEl, valEl);
+    card.appendChild(top);
+
+    if (item.summary) {
+      const bar = document.createElement("div");
+      bar.className = "overview-quota-bar";
+      const fill = document.createElement("div");
+      fill.className = "overview-quota-fill";
+      fill.style.width = `${item.summary.remaining}%`;
+      fill.style.background = item.summary.used > QUOTA_HOT_AT
+        ? "var(--sev-hot, #f87171)"
+        : item.summary.used >= QUOTA_WARN_AT
+          ? "var(--sev-warn, #fbbf24)"
+          : item.color;
+      bar.appendChild(fill);
+      card.appendChild(bar);
+
+      const sub = document.createElement("div");
+      sub.className = "overview-quota-sub";
+      sub.append(
+        createText("span", "", item.summary.windowLabel || ""),
+        createText("span", "", item.summary.resetText || "")
+      );
+      card.appendChild(sub);
+    }
+
     grid.appendChild(card);
   }
 
@@ -2641,159 +2752,105 @@ function renderWorkspaceChrome(sessions) {
       overview: wt("navOverview"),
       sessions: wt("navSessions"),
       projects: wt("navProjects"),
-      services: wt("navServices"),
+      quotas: wt("navQuotas"),
     };
     for (const btn of wsNavEl.querySelectorAll("[data-ws-view]")) {
       const view = btn.getAttribute("data-ws-view");
-      if (labels[view]) btn.textContent = labels[view];
+      const labelNode = btn.querySelector("[data-ws-nav-label]");
+      if (labelNode && labels[view]) labelNode.textContent = labels[view];
       btn.classList.toggle("is-active", view === workspaceView);
     }
   }
 
   if (wsLblCommandEl) wsLblCommandEl.textContent = wt("cmdButton");
+  if (wsLblSettingsEl) wsLblSettingsEl.textContent = wt("settingsButton");
 
-  const sys = (workspaceCtx && workspaceCtx.system) || {};
-  if (wsBtnDndEl && wsLblDndEl) {
-    wsBtnDndEl.classList.toggle("is-dnd", !!sys.doNotDisturb);
-    wsLblDndEl.textContent = sys.doNotDisturb ? wt("dndOn") : wt("dndOff");
-  }
-
-  if (wsClientButtonsEl && workspaceCtx && Array.isArray(workspaceCtx.clients)) {
-    const primaryClients = workspaceCtx.clients.filter((c) => c.id !== "antigravity-ide");
-    const sig = JSON.stringify(primaryClients);
-    if (sig !== lastClientButtonsSig) {
-      lastClientButtonsSig = sig;
-      wsClientButtonsEl.replaceChildren();
-      for (const client of primaryClients) {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "ws-tool-btn";
-        btn.textContent = client.label;
-        btn.addEventListener("click", () => {
-          if (window.dashboardAPI && typeof window.dashboardAPI.workspaceAction === "function") {
-            void window.dashboardAPI.workspaceAction({ type: "launch-client", clientId: client.id });
-          }
-        });
-        wsClientButtonsEl.appendChild(btn);
-      }
-    }
-  }
+  const showQuotasDetail = workspaceView === "quotas";
+  if (contentEl) contentEl.hidden = showQuotasDetail;
+  if (wsQuotasPanelEl) wsQuotasPanelEl.hidden = !showQuotasDetail;
 
   if (wsQuotaTitleEl) wsQuotaTitleEl.textContent = wt("quotasTitle");
-  if (wsQuotaAgentSubheadEl) wsQuotaAgentSubheadEl.textContent = wt("codingAgents");
-  if (wsBtnPinQuotaEl) {
-    wsBtnPinQuotaEl.textContent = sys.quotaPinned ? wt("pinAlways") : wt("pinHover");
-    wsBtnPinQuotaEl.classList.toggle("is-active", !!sys.quotaPinned);
+  if (wsRuntimeTitleEl) wsRuntimeTitleEl.textContent = wt("runtimeTitle");
+  if (wsBtnManageAgentsEl) wsBtnManageAgentsEl.textContent = wt("manageAgents");
+
+  const sources = Array.isArray(snapshot && snapshot.accountQuota) ? snapshot.accountQuota : [];
+  const hasCodexQuota = sources.some((s) => s && s.codexQuota && s.codexQuota.group);
+  const hasAgyQuota = sources.some((s) => s && s.antigravityQuota && s.antigravityQuota.group);
+
+  if (wsQuotaMissingRowsEl) {
+    wsQuotaMissingRowsEl.replaceChildren();
+    if (!hasCodexQuota && hasAgyQuota) {
+      const row = document.createElement("div");
+      row.className = "quota-row-inline-empty";
+      row.append(createText("strong", "", "Codex"), createText("span", "", wt("quotaNoData")));
+      wsQuotaMissingRowsEl.appendChild(row);
+    }
+    if (!hasAgyQuota && hasCodexQuota) {
+      const row = document.createElement("div");
+      row.className = "quota-row-inline-empty";
+      row.append(createText("strong", "", "Antigravity"), createText("span", "", wt("quotaNoData")));
+      wsQuotaMissingRowsEl.appendChild(row);
+    }
   }
 
   if (wsQuotaFallbackEl && quotaSummaryEl) {
     const childList = quotaSummaryEl.children || quotaSummaryEl.childNodes || [];
-    const hasAgentQuota = !quotaSummaryEl.hidden && childList.length > 0;
-    wsQuotaFallbackEl.hidden = hasAgentQuota;
+    const hasAnyQuota = !quotaSummaryEl.hidden && childList.length > 0;
+    wsQuotaFallbackEl.hidden = hasAnyQuota;
     wsQuotaFallbackEl.textContent = wt("quotaFallback");
   }
 
+  const sys = (workspaceCtx && workspaceCtx.system) || {};
   const railSig = JSON.stringify({
     lang: (i18nPayload && i18nPayload.lang) || "en",
-    sys: {
-      platform: sys.platform,
-      arch: sys.arch,
-      osVersion: sys.osVersion,
-      hostname: sys.hostname,
-      freeMemGB: sys.freeMemBytes ? Math.round(sys.freeMemBytes / (1024 ** 3) * 10) : 0,
-      uptimeMin: sys.uptimeSec ? Math.floor(sys.uptimeSec / 60) : 0,
-      serverPort: sys.serverPort,
-    },
+    serverPort: sys.serverPort || 0,
     agents: workspaceCtx && workspaceCtx.agents,
-    clients: workspaceCtx && workspaceCtx.clients,
   });
 
   if (railSig === lastWorkspaceRailSig) return;
   lastWorkspaceRailSig = railSig;
 
-  if (wsWebServicesEl) {
-    wsWebServicesEl.replaceChildren();
-    wsWebServicesEl.appendChild(createText("div", "rail-subhead", wt("webClients")));
-    const webDefs = [
-      { id: "chatgpt", name: "ChatGPT", launchClientId: null },
-      {
-        id: "gemini",
-        name: "Gemini",
-        launchClientId: (workspaceCtx && Array.isArray(workspaceCtx.clients)
-          && workspaceCtx.clients.some((c) => c.id === "gemini")) ? "gemini" : null,
-      },
-    ];
-    for (const svc of webDefs) {
-      const row = document.createElement("div");
-      row.className = "web-service-row";
-      const info = document.createElement("div");
-      info.className = "web-service-info";
-      const nameRow = document.createElement("div");
-      nameRow.className = "web-service-name";
-      nameRow.appendChild(document.createTextNode(svc.name));
-      nameRow.appendChild(createText("span", "web-scope-tag", "Web / App"));
-      info.appendChild(nameRow);
-      info.appendChild(createText("div", "web-service-note", wt("webQuotaUnavailable")));
-      row.appendChild(info);
+  if (wsRuntimeListEl) {
+    wsRuntimeListEl.replaceChildren();
 
-      if (svc.launchClientId && window.dashboardAPI && typeof window.dashboardAPI.workspaceAction === "function") {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "rail-pill-btn";
-        btn.textContent = wt("openApp");
-        btn.addEventListener("click", () => {
-          void window.dashboardAPI.workspaceAction({ type: "launch-client", clientId: svc.launchClientId });
-        });
-        row.appendChild(btn);
-      }
-      wsWebServicesEl.appendChild(row);
-    }
-  }
-
-  if (wsSystemTitleEl) wsSystemTitleEl.textContent = wt("systemTitle");
-  if (wsBtnManageAgentsEl) wsBtnManageAgentsEl.textContent = wt("manageAgents");
-
-  if (wsSystemKvEl) {
-    wsSystemKvEl.replaceChildren();
-    const platformName = sys.platform === "darwin" ? "macOS" : (sys.platform === "win32" ? "Windows" : (sys.platform || "Local"));
-    const rows = [
-      [wt("sysDevice"), [platformName, sys.osVersion, sys.arch].filter(Boolean).join(" · ")],
-      [wt("sysMemory"), sys.totalMemBytes ? `${formatBytesGB(sys.freeMemBytes)} / ${formatBytesGB(sys.totalMemBytes)}` : "—"],
-      [wt("sysUptime"), formatUptime(sys.uptimeSec)],
-      [wt("sysBridge"), sys.serverPort ? wt("sysListening").replace("{port}", sys.serverPort) : wt("sysStarting")],
-    ];
-    for (const [k, v] of rows) {
-      const r = document.createElement("div");
-      r.className = "sys-kv-row";
-      r.append(createText("span", "sys-kv-label", k), createText("span", "sys-kv-value", v));
-      wsSystemKvEl.appendChild(r);
-    }
-  }
-
-  if (wsAgentHealthEl && workspaceCtx && Array.isArray(workspaceCtx.agents)) {
-    wsAgentHealthEl.replaceChildren();
-    for (const ag of workspaceCtx.agents) {
-      const r = document.createElement("div");
-      r.className = "agent-health-row";
-      const left = document.createElement("div");
-      left.className = "agent-health-left";
-      if (ag.iconUrl) {
-        const img = document.createElement("img");
-        img.className = "agent-health-icon";
-        img.src = ag.iconUrl;
-        img.alt = "";
-        img.addEventListener("error", () => img.remove(), { once: true });
-        left.appendChild(img);
-      }
-      left.appendChild(createText("span", "", ag.name));
-      const ready = ag.enabled && ag.integrationInstalled;
-      const pill = createText(
+    // Only show real, actionable runtime status: local hook server + connected agents.
+    const bridgeRow = document.createElement("div");
+    bridgeRow.className = "runtime-row";
+    bridgeRow.append(
+      createText("span", "runtime-left", wt("localService")),
+      createText(
         "span",
-        `agent-health-pill${ready ? " is-ready" : ""}`,
-        !ag.integrationInstalled ? wt("agentUninstalled") : (ag.enabled ? wt("agentReady") : wt("agentPaused"))
-      );
-      r.append(left, pill);
-      wsAgentHealthEl.appendChild(r);
+        `status-pill${sys.serverPort ? " is-ready" : ""}`,
+        sys.serverPort
+          ? wt("serviceRunning").replace("{port}", sys.serverPort)
+          : wt("serviceOffline")
+      )
+    );
+    wsRuntimeListEl.appendChild(bridgeRow);
+
+    if (workspaceCtx && Array.isArray(workspaceCtx.agents)) {
+      for (const ag of workspaceCtx.agents) {
+        const r = document.createElement("div");
+        r.className = "runtime-row";
+        const left = document.createElement("span");
+        left.className = "runtime-left";
+        if (ag.iconUrl) {
+          const img = document.createElement("img");
+          img.src = ag.iconUrl;
+          img.alt = "";
+          img.addEventListener("error", () => img.remove(), { once: true });
+          left.appendChild(img);
+        }
+        left.appendChild(document.createTextNode(ag.name));
+        const ready = ag.enabled && ag.integrationInstalled;
+        const pill = createText(
+          "span",
+          `status-pill${ready ? " is-ready" : ""}`,
+          !ag.integrationInstalled ? wt("agentUninstalled") : (ag.enabled ? wt("agentReady") : wt("agentPaused"))
+        );
+        r.append(left, pill);
+        wsRuntimeListEl.appendChild(r);
+      }
     }
   }
 }
@@ -2821,13 +2878,18 @@ function initWorkspaceControls() {
     });
   }
 
-  if (wsBtnDndEl) {
-    wsBtnDndEl.addEventListener("click", async () => {
-      if (!window.dashboardAPI || typeof window.dashboardAPI.workspaceAction !== "function") return;
-      const res = await window.dashboardAPI.workspaceAction({ type: "toggle-dnd" });
-      if (res && typeof res.doNotDisturb === "boolean" && workspaceCtx && workspaceCtx.system) {
-        workspaceCtx.system.doNotDisturb = res.doNotDisturb;
-        renderWorkspaceChrome(snapshot.sessions || []);
+  if (wsBtnCodexEl) {
+    wsBtnCodexEl.addEventListener("click", () => {
+      if (window.dashboardAPI && typeof window.dashboardAPI.workspaceAction === "function") {
+        void window.dashboardAPI.workspaceAction({ type: "launch-client", clientId: "codex" });
+      }
+    });
+  }
+
+  if (wsBtnAntigravityEl) {
+    wsBtnAntigravityEl.addEventListener("click", () => {
+      if (window.dashboardAPI && typeof window.dashboardAPI.workspaceAction === "function") {
+        void window.dashboardAPI.workspaceAction({ type: "launch-client", clientId: "antigravity" });
       }
     });
   }
@@ -2836,17 +2898,6 @@ function initWorkspaceControls() {
     wsBtnSettingsEl.addEventListener("click", () => {
       if (window.dashboardAPI && typeof window.dashboardAPI.workspaceAction === "function") {
         void window.dashboardAPI.workspaceAction({ type: "open-settings" });
-      }
-    });
-  }
-
-  if (wsBtnPinQuotaEl) {
-    wsBtnPinQuotaEl.addEventListener("click", async () => {
-      if (!window.dashboardAPI || typeof window.dashboardAPI.workspaceAction !== "function") return;
-      const res = await window.dashboardAPI.workspaceAction({ type: "toggle-quota-pinned" });
-      if (res && typeof res.quotaPinned === "boolean" && workspaceCtx && workspaceCtx.system) {
-        workspaceCtx.system.quotaPinned = res.quotaPinned;
-        renderWorkspaceChrome(snapshot.sessions || []);
       }
     });
   }
@@ -2889,12 +2940,16 @@ function render(options = {}) {
   pruneSessionFolderActionState(sessions, now);
   const isWsDom = hasWorkspaceDom();
   titleEl.textContent = isWsDom ? wt("workspaceTitle") : t("dashboardWindowTitle");
-  countEl.textContent = t("dashboardCount").replace("{n}", count);
+  countEl.textContent = isWsDom ? String(count) : t("dashboardCount").replace("{n}", count);
   document.title = isWsDom ? `Character OS · ${wt("workspaceTitle")}` : t("dashboardWindowTitle");
   renderQuotaSummary(snapshot);
   renderWorkspaceChrome(sessions);
 
   renderQuickBanner();
+
+  if (isWsDom && workspaceView === "quotas") {
+    return;
+  }
 
   const approvalsCount = workspaceCtx && Array.isArray(workspaceCtx.pendingApprovals)
     ? workspaceCtx.pendingApprovals.length
@@ -2914,6 +2969,23 @@ function render(options = {}) {
   // every session in them disappeared — the numbered slots still belong to
   // this round and must not collapse into the generic empty state.
   if (count === 0 && orphanCount === 0 && approvalsCount === 0 && !(quick.active && quick.skeleton)) {
+    if (isWsDom && workspaceView === "overview") {
+      const overviewEmpty = document.createDocumentFragment();
+      appendOverviewQuotasSection(overviewEmpty, now);
+      appendSessionHistory(overviewEmpty, now);
+      appendProjectsSection(overviewEmpty, sessions);
+      if (overviewEmpty.childNodes && overviewEmpty.childNodes.length === 1) {
+        const empty = document.createElement("div");
+        empty.className = "empty";
+        empty.append(
+          createText("div", "empty-title", t("dashboardEmptyTitle")),
+          createText("div", "empty-body", t("dashboardEmptyBody"))
+        );
+        overviewEmpty.appendChild(empty);
+      }
+      contentEl.replaceChildren(overviewEmpty);
+      return;
+    }
     renderEmpty();
     return;
   }
@@ -2922,6 +2994,9 @@ function render(options = {}) {
   const fragment = document.createDocumentFragment();
 
   appendPendingApprovalsSection(fragment, now);
+  if (isWsDom && workspaceView === "overview" && !quick.active) {
+    appendOverviewQuotasSection(fragment, now);
+  }
   // While a round is on, the groups come from its frozen presentation; the
   // ordinary dynamic ordering resumes as soon as it ends.
   appendSessionGroups(fragment, byId, now);
@@ -2936,11 +3011,21 @@ function render(options = {}) {
 }
 
 async function init() {
+  initWorkspaceControls();
   window.dashboardAPI.onLangChange((payload) => {
     i18nPayload = payload || i18nPayload;
+    lastWorkspaceRailSig = "";
     render();
     syncKimiQuotaRefreshControl();
   });
+  if (typeof window.dashboardAPI.onSelectView === "function") {
+    window.dashboardAPI.onSelectView((view) => {
+      if (view === "overview" || view === "sessions" || view === "projects" || view === "quotas") {
+        workspaceView = view;
+        render({ force: true });
+      }
+    });
+  }
   window.dashboardAPI.onSessionSnapshot((nextSnapshot) => {
     const hadKimiQuota = snapshotHasKimiQuota(snapshot);
     const previousSessionKey = liveSessionKey(snapshot);
@@ -2963,7 +3048,7 @@ async function init() {
     window.dashboardAPI.getI18n(),
     window.dashboardAPI.getSnapshot(),
     window.dashboardAPI && typeof window.dashboardAPI.getKimiQuotaStatus === "function"
-      ? window.dashboardAPI.getKimiQuotaStatus()
+      ? window.dashboardAPI.getKimiQuotaStatus().catch(() => null)
       : Promise.resolve(null),
     window.dashboardAPI && typeof window.dashboardAPI.getWorkspaceContext === "function"
       ? window.dashboardAPI.getWorkspaceContext().catch(() => null)
@@ -2975,7 +3060,6 @@ async function init() {
   if (nextWorkspaceCtx && !nextWorkspaceCtx.reason && typeof nextWorkspaceCtx === "object") {
     workspaceCtx = nextWorkspaceCtx;
   }
-  initWorkspaceControls();
   render();
   void reloadSessionHistory();
 

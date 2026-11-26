@@ -58,15 +58,18 @@ function registerSessionIpc(options = {}) {
   // exact local page URL. Resolving through a window would break once the page
   // lives in a WebContentsView, and loosening any of the three would widen the
   // Kimi manual-quota capability — neither is acceptable.
+  const isCaseInsensitiveFs = process.platform === "darwin" || process.platform === "win32";
+  const DASHBOARD_PAGE_URL_LOWER = DASHBOARD_PAGE_URL.toLowerCase();
+
   function isTrustedDashboardEvent(event) {
     const contents = getDashboardWebContents();
     if (!contents) return false;
     if (typeof contents.isDestroyed === "function" && contents.isDestroyed()) return false;
     const frame = event && event.senderFrame;
-    return event.sender === contents
-      && !!frame
-      && frame === contents.mainFrame
-      && frame.url === DASHBOARD_PAGE_URL;
+    if (!frame || event.sender !== contents || frame !== contents.mainFrame) return false;
+    const url = typeof frame.url === "string" ? frame.url : "";
+    return url === DASHBOARD_PAGE_URL
+      || (isCaseInsensitiveFs && url.toLowerCase() === DASHBOARD_PAGE_URL_LOWER);
   }
 
   function rejectUntrustedDashboardEvent(event) {

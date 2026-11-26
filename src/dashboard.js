@@ -558,11 +558,15 @@ module.exports = function initDashboard(ctx) {
     // is still live so a pending debounce cannot lose the user's last move.
     dashboardWindow.on("close", () => persistWindowBoundsNow(createdWindow));
     const createdHost = dashboardHost;
+    const requestedInitialView = typeof options.view === "string" ? options.view : "";
     createdHost.webContents.once("did-finish-load", () => {
       if (dashboardHost !== createdHost) return;
       applyZoomToWebContents(createdHost.webContents, getTextScale());
       sendI18n();
       sendSnapshot();
+      if (requestedInitialView && typeof createdHost.webContents.send === "function") {
+        createdHost.webContents.send("dashboard:select-view", requestedInitialView);
+      }
     });
     // `ready-to-show` never fires on BaseWindow; the host maps the first-paint
     // signal to the real WebContents load on that path.
@@ -699,6 +703,10 @@ module.exports = function initDashboard(ctx) {
       focusPage();
       sendI18n();
       sendSnapshot();
+      if (typeof options.view === "string" && options.view) {
+        const wc = getWebContents();
+        if (wc && typeof wc.send === "function") wc.send("dashboard:select-view", options.view);
+      }
       return dashboardWindow;
     }
     return createDashboardWindow(options);

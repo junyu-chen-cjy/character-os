@@ -22,7 +22,7 @@ function readJson(file, fallback) {
   }
 }
 
-function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorage, shell }) {
+function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorage, shell, getLang }) {
   let win;
   let history;
   let settings;
@@ -31,6 +31,26 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
   let revision = 0;
   let modelSettingsRequested = false;
   const rendered = new WeakMap();
+  const isCaseInsensitiveFs = process.platform === "darwin" || process.platform === "win32";
+  const PAGE_URL_LOWER = PAGE_URL.toLowerCase();
+
+  function resolveLang() {
+    try {
+      const value = typeof getLang === "function" ? getLang() : "en";
+      return typeof value === "string" && value ? value : "en";
+    } catch {
+      return "en";
+    }
+  }
+
+  function resolveWindowTitle() {
+    const l = resolveLang();
+    if (l === "zh") return "Character OS · 指令";
+    if (l === "zh-TW") return "Character OS · 指令";
+    if (l === "ja") return "Character OS · コマンド";
+    if (l === "ko") return "Character OS · 명령";
+    return "Character OS · Command";
+  }
 
   function dataPath(name) {
     return path.join(app.getPath("userData"), "chat", name);
@@ -75,6 +95,7 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
     }
     return {
       revision: ++revision,
+      lang: resolveLang(),
       sessions: history.sessions.map(({ id, title }) => ({ id, title })),
       selectedId: history.selectedId,
       messages,
@@ -234,7 +255,9 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
   function handle(channel, action) {
     ipcMain.handle(`chat:${channel}`, (event, value) => {
       const frame = event.senderFrame;
-      if (!win || event.sender !== win.webContents || !frame || frame.parent || frame.url !== PAGE_URL) {
+      const frameUrl = frame && typeof frame.url === "string" ? frame.url : "";
+      const urlOk = frameUrl === PAGE_URL || (isCaseInsensitiveFs && frameUrl.toLowerCase() === PAGE_URL_LOWER);
+      if (!win || event.sender !== win.webContents || !frame || frame.parent || !urlOk) {
         return { error: "Chat window is unavailable." };
       }
       try {
@@ -256,6 +279,7 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
 
   function open() {
     if (win && !win.isDestroyed()) {
+      if (typeof win.setTitle === "function") win.setTitle(resolveWindowTitle());
       if (typeof win.isMinimized === "function" && win.isMinimized()) win.restore();
       if (typeof win.show === "function") win.show();
       if (typeof win.focus === "function") win.focus();
@@ -265,8 +289,8 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
       return;
     }
     const window = new BrowserWindow({
-      title: "Character OS Command",
-      width: 680, height: 540, minWidth: 460, minHeight: 380,
+      title: resolveWindowTitle(),
+      width: 640, height: 500, minWidth: 440, minHeight: 360,
       show: false,
       ...(process.platform === "darwin" ? { acceptFirstMouse: true } : {}),
       backgroundColor: nativeTheme.shouldUseDarkColors ? "#161618" : "#f5f5f7",
@@ -291,6 +315,13 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
     void window.loadFile(PAGE).catch(() => { if (!window.isDestroyed()) window.close(); });
   }
 
+  function syncLang() {
+    if (win && !win.isDestroyed() && typeof win.setTitle === "function") {
+      win.setTitle(resolveWindowTitle());
+    }
+    publish();
+  }
+
   function showRequestedModelSettings() {
     if (!modelSettingsRequested || !win) return;
     modelSettingsRequested = false;
@@ -303,7 +334,7 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
     if (!win?.webContents.isLoading()) showRequestedModelSettings();
   }
 
-  return { open, openModelSettings, stop };
+  return { open, openModelSettings, stop, syncLang };
 }
 
 module.exports = { createChatWindow };

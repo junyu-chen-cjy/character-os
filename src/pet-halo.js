@@ -11,10 +11,10 @@ const isLinux = process.platform === "linux";
 const isMac = process.platform === "darwin";
 const isWin = process.platform === "win32";
 
-const HALO_WIDTH = 332;
-const HALO_DEFAULT_HEIGHT = 136;
-const HALO_MIN_HEIGHT = 92;
-const HALO_MAX_HEIGHT = 360;
+const HALO_WIDTH = 284;
+const HALO_DEFAULT_HEIGHT = 114;
+const HALO_MIN_HEIGHT = 76;
+const HALO_MAX_HEIGHT = 220;
 const HALO_PET_GAP = 6;
 const EDGE_MARGIN = 8;
 const BUBBLE_GAP = 6;
@@ -29,9 +29,7 @@ const LINUX_WINDOW_TYPE = "toolbar";
 
 const MAC_AGENT_CLIENTS = Object.freeze([
   { id: "codex", label: "Codex", kind: "agent", args: ["-b", "com.openai.codex"] },
-  { id: "gemini", label: "Gemini", kind: "app", args: ["-b", "com.google.GeminiMacOS"] },
-  { id: "antigravity", label: "Antigravity", kind: "ide", args: ["-a", "Antigravity.app"] },
-  { id: "antigravity-ide", label: "Antigravity IDE", kind: "ide", args: ["-a", "Antigravity IDE.app"] },
+  { id: "antigravity", label: "Antigravity", kind: "app", args: ["-b", "com.google.GeminiMacOS"] },
 ]);
 
 function clamp(value, min, max) {
@@ -261,22 +259,19 @@ function initPetHalo(ctx) {
     const runningCount = sessions.filter((s) => s && !s.headless && s.badge === "running").length;
     const pendingList = typeof ctx.getPendingPermissions === "function" ? ctx.getPendingPermissions() : [];
     const pendingApprovalCount = Array.isArray(pendingList) ? pendingList.length : 0;
-    const clients = isMac
-      ? MAC_AGENT_CLIENTS.map(({ id, label, kind }) => ({ id, label, kind }))
-      : [
-        { id: "codex", label: "Codex", kind: "agent" },
-        { id: "antigravity", label: "Antigravity", kind: "ide" },
-      ];
+    const snapshotIcons = (snapshot && snapshot.quotaAgentIcons) || {};
+    const iconFor = typeof ctx.getAgentIconUrl === "function" ? ctx.getAgentIconUrl : () => "";
     return {
       lang: typeof ctx.getLang === "function" ? ctx.getLang() : "en",
-      doNotDisturb: !!(typeof ctx.getDoNotDisturb === "function" && ctx.getDoNotDisturb()),
-      quotaPinned: !!ctx.sessionHudPinned,
       flippedAbove: haloFlippedAbove,
       runningCount,
       pendingApprovalCount,
       accountQuota: Array.isArray(snapshot && snapshot.accountQuota) ? snapshot.accountQuota : [],
-      quotaAgentIcons: (snapshot && snapshot.quotaAgentIcons) || {},
-      clients,
+      quotaAgentIcons: {
+        ...snapshotIcons,
+        codexQuota: snapshotIcons.codexQuota || iconFor("codex") || "",
+        antigravityQuota: snapshotIcons.antigravityQuota || iconFor("antigravity-cli") || "",
+      },
     };
   }
 
@@ -810,44 +805,23 @@ function initPetHalo(ctx) {
       if (hoverActive) syncSurfaces({ sendSnapshot: false });
     });
 
-    on("pet-halo:action", (event, payload) => {
-      if (!isHaloSender(event) || !payload) return;
+    handle("pet-halo:action", async (event, payload) => {
+      if (!isHaloSender(event) || !payload || typeof payload !== "object") return { status: "error" };
       const type = payload.type;
       hoverActive = false;
       stopAutoHidePoll();
       hideHaloAnimated();
       if (type === "open-workspace" && typeof ctx.openDashboard === "function") {
-        ctx.openDashboard({ source: "halo" });
-      } else if (type === "open-command" && typeof ctx.openChat === "function") {
+        const view = typeof payload.view === "string" ? payload.view : undefined;
+        ctx.openDashboard({ source: "halo", ...(view ? { view } : {}) });
+        return { status: "ok" };
+      }
+      if (type === "open-command" && typeof ctx.openChat === "function") {
         ctx.openChat();
-      } else if (type === "open-settings" && typeof ctx.openSettingsWindow === "function") {
-        ctx.openSettingsWindow();
+        return { status: "ok" };
       }
-    });
-
-    handle("pet-halo:command", async (event, payload) => {
-      if (!isHaloSender(event) || !payload) return { status: "error" };
-      if (payload.type === "toggle-dnd") {
-        const next = !(typeof ctx.getDoNotDisturb === "function" && ctx.getDoNotDisturb());
-        if (next && typeof ctx.enableDoNotDisturb === "function") ctx.enableDoNotDisturb();
-        else if (!next && typeof ctx.disableDoNotDisturb === "function") ctx.disableDoNotDisturb();
-        sendHaloState();
-        return { status: "ok", doNotDisturb: next };
-      }
-      if (payload.type === "toggle-quota-pinned") {
-        const next = !ctx.sessionHudPinned;
-        if (typeof ctx.setSessionHudPinned === "function") {
-          await ctx.setSessionHudPinned(next);
-        }
-        sendHaloState();
-        syncSurfaces({ sendSnapshot: true });
-        return { status: "ok", quotaPinned: next };
-      }
-      if (payload.type === "launch-client") {
-        hoverActive = false;
-        stopAutoHidePoll();
-        hideHaloAnimated();
-        return launchAgentClientApp(payload.clientId, {
+      if (type === "launch-client") {
+        return launchAgentClientApp(String(payload.clientId || ""), {
           t: ctx.t,
           showDashboard: ctx.openDashboard,
         });
