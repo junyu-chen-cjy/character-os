@@ -557,6 +557,7 @@ it("opens macOS Agent apps from the pet menu and reports a launch failure", () =
   for (const client of item.submenu) client.click();
   assert.deepEqual(calls, [
     ["/usr/bin/open", "-b", "com.openai.codex"],
+    ["/usr/bin/open", "-b", "com.google.GeminiMacOS"],
     ["/usr/bin/open", "-a", "Antigravity.app"],
     ["/usr/bin/open", "-a", "Antigravity IDE.app"],
   ]);

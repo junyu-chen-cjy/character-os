@@ -398,6 +398,7 @@ module.exports = function initMenu(ctx) {
   function buildAgentClientsMenuItem() {
     const clients = [
       { label: "Codex", args: ["-b", "com.openai.codex"] },
+      { label: "Gemini", args: ["-b", "com.google.GeminiMacOS"] },
       { label: "Antigravity", args: ["-a", "Antigravity.app"] },
       { label: "Antigravity IDE", args: ["-a", "Antigravity IDE.app"] },
     ];
