@@ -1,6 +1,7 @@
 "use strict";
 
-const { app, BrowserWindow, screen, Menu, Tray, nativeImage } = require("electron");
+const { app, BrowserWindow, dialog, screen, Menu, Tray, nativeImage } = require("electron");
+const { execFile } = require("node:child_process");
 const path = require("path");
 const { keepOutOfTaskbar } = require("./taskbar");
 const { loadTrayNormalIcon } = require("./tray-flash-icon");
@@ -323,6 +324,7 @@ module.exports = function initMenu(ctx) {
           if (typeof ctx.openDashboard === "function") ctx.openDashboard();
         },
       },
+      ...(isMac ? [buildAgentClientsMenuItem()] : []),
       buildPermissionAutomationMenuItem(),
     ];
 
@@ -391,6 +393,30 @@ module.exports = function initMenu(ctx) {
 
     const items = joinGroups([stateGroup, noiseGroup, workGroup, systemGroup, appGroup, quitGroup]);
     ctx.tray.setContextMenu(Menu.buildFromTemplate(items));
+  }
+
+  function buildAgentClientsMenuItem() {
+    const clients = [
+      { label: "Codex", args: ["-b", "com.openai.codex"] },
+      { label: "Antigravity", args: ["-a", "Antigravity.app"] },
+      { label: "Antigravity IDE", args: ["-a", "Antigravity IDE.app"] },
+    ];
+    return {
+      label: t("openAgentClient"),
+      submenu: clients.map(({ label, args }) => ({
+        label,
+        click: () => {
+          execFile("/usr/bin/open", args, (error) => {
+            if (error) {
+              dialog.showErrorBox(
+                t("openAgentClientFailed").replace("{app}", label),
+                t("openAgentClientCheckInstallation"),
+              );
+            }
+          });
+        },
+      })),
+    };
   }
 
   function rebuildAllMenus() {
@@ -613,6 +639,7 @@ module.exports = function initMenu(ctx) {
           if (typeof ctx.openDashboard === "function") ctx.openDashboard();
         },
       },
+      ...(isMac ? [buildAgentClientsMenuItem()] : []),
       {
         label: t("openRecap"),
         click: () => ctx.openSettingsWindow({ tab: "recap" }),

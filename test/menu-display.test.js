@@ -4,7 +4,7 @@ const { describe, it } = require("node:test");
 
 const MENU_MODULE_PATH = require.resolve("../src/menu");
 
-function loadMenuWithElectron(fakeElectron, fakeTaskbar = null, platform = "win32") {
+function loadMenuWithElectron(fakeElectron, fakeTaskbar = null, platform = "win32", fakeExecFile = null) {
   delete require.cache[MENU_MODULE_PATH];
   const originalLoad = Module._load;
   const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform");
@@ -12,6 +12,7 @@ function loadMenuWithElectron(fakeElectron, fakeTaskbar = null, platform = "win3
   Module._load = function patchedLoad(request, parent, isMain) {
     if (request === "electron") return fakeElectron;
     if (fakeTaskbar && request === "./taskbar") return fakeTaskbar;
+    if (request === "node:child_process" && fakeExecFile) return { execFile: fakeExecFile };
     return originalLoad.apply(this, arguments);
   };
   try {
@@ -533,6 +534,34 @@ describe("menu dashboard action", () => {
     openDashboard.click();
     assert.strictEqual(called, 1);
   });
+});
+
+it("opens macOS Agent apps from the pet menu and reports a launch failure", () => {
+  const calls = [];
+  const errors = [];
+  const fakeElectron = {
+    app: { dock: {} },
+    dialog: { showErrorBox: (...args) => errors.push(args) },
+    Menu: { buildFromTemplate: (template) => ({ template }) },
+    screen: { getAllDisplays: () => [] },
+  };
+  const execFile = (file, args, callback) => {
+    calls.push([file, ...args]);
+    callback(args.includes("Antigravity IDE.app") ? new Error("not found") : null);
+  };
+  const initMenu = loadMenuWithElectron(fakeElectron, null, "darwin", execFile);
+  const ctx = buildBaseCtx();
+  initMenu(ctx).buildContextMenu();
+
+  const item = ctx.contextMenu.template.find(({ label }) => label === "Open Agent App");
+  for (const client of item.submenu) client.click();
+  assert.deepEqual(calls, [
+    ["/usr/bin/open", "-b", "com.openai.codex"],
+    ["/usr/bin/open", "-a", "Antigravity.app"],
+    ["/usr/bin/open", "-a", "Antigravity IDE.app"],
+  ]);
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0][0], "Could not open Antigravity IDE");
 });
 
 describe("menu recap action", () => {
