@@ -256,15 +256,20 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
 
   function open() {
     if (win && !win.isDestroyed()) {
-      if (win.isMinimized()) win.restore();
-      win.show();
+      if (typeof win.isMinimized === "function" && win.isMinimized()) win.restore();
+      if (typeof win.show === "function") win.show();
+      if (typeof win.focus === "function") win.focus();
+      if (win.webContents && typeof win.webContents.send === "function") {
+        win.webContents.send("chat:focus-input");
+      }
       return;
     }
     const window = new BrowserWindow({
-      title: "Character OS Chat",
-      width: 980, height: 730, minWidth: 620, minHeight: 470,
+      title: "Character OS Command",
+      width: 680, height: 540, minWidth: 460, minHeight: 380,
       show: false,
-      backgroundColor: nativeTheme.shouldUseDarkColors ? "#191c20" : "#fbf9f5",
+      ...(process.platform === "darwin" ? { acceptFirstMouse: true } : {}),
+      backgroundColor: nativeTheme.shouldUseDarkColors ? "#161618" : "#f5f5f7",
       webPreferences: {
         preload: path.join(__dirname, "preload-chat.js"),
         contextIsolation: true, sandbox: true, nodeIntegration: false,
@@ -274,7 +279,10 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
     win = window;
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.webContents.on("will-navigate", event => event.preventDefault());
-    window.once("ready-to-show", () => window.show());
+    window.once("ready-to-show", () => {
+      window.show();
+      if (typeof window.focus === "function") window.focus();
+    });
     window.webContents.once("did-finish-load", showRequestedModelSettings);
     window.on("closed", () => {
       win = null;

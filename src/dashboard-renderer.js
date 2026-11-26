@@ -39,6 +39,113 @@ const quotaSummaryEl = document.getElementById("quotaSummary");
 // means entering the mode never reflows or rebuilds the user's content.
 const quickBannerEl = document.getElementById("quickBanner");
 
+// Optional Workspace Control Center nodes (null in legacy minimal test harnesses).
+const wsBodyEl = document.getElementById("wsBody");
+const wsStatusDotEl = document.getElementById("wsStatusDot");
+const wsNavEl = document.getElementById("wsNav");
+const wsBtnCommandEl = document.getElementById("wsBtnCommand");
+const wsLblCommandEl = document.getElementById("wsLblCommand");
+const wsClientButtonsEl = document.getElementById("wsClientButtons");
+const wsBtnDndEl = document.getElementById("wsBtnDnd");
+const wsLblDndEl = document.getElementById("wsLblDnd");
+const wsBtnSettingsEl = document.getElementById("wsBtnSettings");
+const wsQuotaTitleEl = document.getElementById("wsQuotaTitle");
+const wsBtnPinQuotaEl = document.getElementById("wsBtnPinQuota");
+const wsQuotaAgentSubheadEl = document.getElementById("wsQuotaAgentSubhead");
+const wsQuotaFallbackEl = document.getElementById("wsQuotaFallback");
+const wsWebServicesEl = document.getElementById("wsWebServices");
+const wsSystemTitleEl = document.getElementById("wsSystemTitle");
+const wsBtnManageAgentsEl = document.getElementById("wsBtnManageAgents");
+const wsSystemKvEl = document.getElementById("wsSystemKv");
+const wsAgentHealthEl = document.getElementById("wsAgentHealth");
+
+let workspaceView = "overview";
+let workspaceCtx = null;
+let workspaceCtxPending = false;
+let lastWorkspaceRailSig = "";
+let lastClientButtonsSig = "";
+
+const WS_STRINGS = {
+  en: {
+    workspaceTitle: "Workspace",
+    navOverview: "Overview",
+    navSessions: "Sessions",
+    navProjects: "Projects",
+    navServices: "Quotas & System",
+    cmdButton: "Command",
+    dndOff: "Quiet",
+    dndOn: "DND On",
+    quotasTitle: "AI Service Quotas",
+    pinAlways: "Pinned",
+    pinHover: "On Hover",
+    codingAgents: "Coding Agents",
+    webClients: "Official Web & Desktop Apps",
+    quotaFallback: "No live Coding Agent quota telemetry yet. Start a Codex or Antigravity turn to sync real usage.",
+    webQuotaUnavailable: "Web / App · Official quota not exposed locally",
+    openApp: "Open",
+    systemTitle: "System & Runtime",
+    manageAgents: "Manage",
+    sysDevice: "Device",
+    sysMemory: "Memory",
+    sysUptime: "Uptime",
+    sysBridge: "Local Bridge",
+    sysListening: "127.0.0.1:{port} · Active",
+    sysStarting: "Starting…",
+    agentReady: "Connected",
+    agentPaused: "Paused",
+    agentUninstalled: "Hooks off",
+    approvalsTitle: "Pending Approvals ({n})",
+    revealBubble: "Show Prompt",
+    projectsTitle: "Projects",
+    projectsEmpty: "No project directories recorded yet.",
+    projectActiveCount: "{n} active",
+    projectRecentCount: "{n} recent",
+    remainingLabel: "{pct}% left",
+  },
+  zh: {
+    workspaceTitle: "工作台",
+    navOverview: "总览",
+    navSessions: "会话与任务",
+    navProjects: "项目目录",
+    navServices: "额度与系统",
+    cmdButton: "指令",
+    dndOff: "免打扰",
+    dndOn: "免打扰中",
+    quotasTitle: "AI 服务与额度",
+    pinAlways: "常驻桌宠旁",
+    pinHover: "仅悬停显示",
+    codingAgents: "Coding Agent 额度",
+    webClients: "官方网页与桌面端",
+    quotaFallback: "暂无实时 Coding Agent 额度数据。运行 Codex 或 Antigravity 会话后将自动同步真实余量。",
+    webQuotaUnavailable: "网页 / 客户端 · 官方未开放本机额度接口",
+    openApp: "唤起",
+    systemTitle: "本机与运行状态",
+    manageAgents: "管理",
+    sysDevice: "本机架构",
+    sysMemory: "可用内存",
+    sysUptime: "运行时间",
+    sysBridge: "状态服务",
+    sysListening: "127.0.0.1:{port} · 正常",
+    sysStarting: "启动中…",
+    agentReady: "已连接",
+    agentPaused: "已暂停",
+    agentUninstalled: "未装 Hook",
+    approvalsTitle: "待处理审批 ({n})",
+    revealBubble: "显示气泡",
+    projectsTitle: "项目目录",
+    projectsEmpty: "暂无已记录的本地项目目录。",
+    projectActiveCount: "{n} 个活跃会话",
+    projectRecentCount: "{n} 条近期记录",
+    remainingLabel: "剩余 {pct}%",
+  },
+};
+
+function wt(key) {
+  const lang = (i18nPayload && i18nPayload.lang) || "en";
+  const bucket = String(lang).startsWith("zh") ? WS_STRINGS.zh : WS_STRINGS.en;
+  return bucket[key] || WS_STRINGS.en[key] || key;
+}
+
 // ── Dashboard keyboard mode ─────────────────────────────────────────────────
 // A temporary state of this same page: same DOM, same drafts, same scroll.
 // Digits own session IDs for the whole round (never list indices), so a
@@ -908,9 +1015,13 @@ function buildQuotaHalfBar(labelText, bucket, resetStyle, providerKey, ringSlot,
   labelRow.className = "quota-label-row";
   labelRow.appendChild(createText("span", "quota-label", labelText));
   const isBalance = presentation.kind === "balance";
+  const remainingPercent = Math.max(0, Math.min(100, Math.round(100 - (Number(bucket.usedPercent) || 0))));
+  const remainingWord = t("quotaRingRemainingWord") !== "quotaRingRemainingWord"
+    ? t("quotaRingRemainingWord")
+    : "left";
   const percentText = isBalance
     ? t("dashboardDeepseekBalanceBaseline").replace("{amount}", formatBalanceAmount(bucket.baseline, bucket.currency))
-    : `${bucket.usedPercent}%`;
+    : `${remainingPercent}% ${remainingWord}`;
   let resetText = "";
   if (Number.isFinite(bucket.resetAt)) {
     resetText = resetStyle === "date"
@@ -933,7 +1044,7 @@ function buildQuotaHalfBar(labelText, bucket, resetStyle, providerKey, ringSlot,
   // Orbit coin uses for the same logical window; the sev- class overrides it
   // on warning/hot, again exactly like the coin's fill.
   fill.className = `quota-bar-fill pv-${providerKey} rg-${ringSlot} ${quotaSeverityClass(bucket.usedPercent)}`;
-  const percent = isBalance ? 100 - bucket.usedPercent : bucket.usedPercent;
+  const percent = isBalance ? 100 - bucket.usedPercent : remainingPercent;
   fill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
   track.appendChild(fill);
   half.appendChild(track);
@@ -1343,7 +1454,16 @@ function appendMeta(main, session, now) {
 function appendPath(main, session) {
   const pathText = session.cwd || t("dashboardNoPath");
   const pathEl = createText("div", "path", pathText);
-  if (session.cwd) pathEl.title = session.cwd;
+  if (session.cwd) {
+    pathEl.title = session.cwd;
+    if (canOfferLocalFolder(session) && window.dashboardAPI && typeof window.dashboardAPI.openSessionFolder === "function") {
+      pathEl.style.cursor = "pointer";
+      pathEl.addEventListener("click", (event) => {
+        event.stopPropagation();
+        void window.dashboardAPI.openSessionFolder(session.id);
+      });
+    }
+  }
   main.appendChild(pathEl);
 }
 
@@ -2279,6 +2399,467 @@ function appendSessionGroups(fragment, byId, now) {
   }
 }
 
+function formatBytesGB(bytes) {
+  const n = Number(bytes);
+  if (!Number.isFinite(n) || n <= 0) return "—";
+  return `${(n / (1024 ** 3)).toFixed(1)} GB`;
+}
+
+function formatUptime(sec) {
+  const s = Number(sec);
+  if (!Number.isFinite(s) || s < 0) return "—";
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
+async function reloadWorkspaceContext() {
+  if (!window.dashboardAPI || typeof window.dashboardAPI.getWorkspaceContext !== "function") return;
+  if (workspaceCtxPending) return;
+  workspaceCtxPending = true;
+  try {
+    const res = await window.dashboardAPI.getWorkspaceContext();
+    if (res && !res.reason && typeof res === "object") {
+      workspaceCtx = res;
+    }
+  } catch {
+    // ignore transient IPC error
+  } finally {
+    workspaceCtxPending = false;
+  }
+}
+
+function collectProjectsModel(sessions, historyRows) {
+  const byCwd = new Map();
+  for (const s of sessions) {
+    const cwd = s && typeof s.cwd === "string" ? s.cwd.trim() : "";
+    if (!cwd) continue;
+    let rec = byCwd.get(cwd);
+    if (!rec) {
+      rec = {
+        cwd,
+        name: s.displayFolder || sessionHistoryFolderLabel(cwd) || cwd,
+        activeSessions: [],
+        historyItems: [],
+        updatedAt: 0,
+      };
+      byCwd.set(cwd, rec);
+    }
+    rec.activeSessions.push(s);
+    rec.updatedAt = Math.max(rec.updatedAt, Number(s.updatedAt) || 0);
+  }
+  for (const h of historyRows) {
+    const cwd = h && typeof h.cwd === "string" ? h.cwd.trim() : "";
+    if (!cwd) continue;
+    let rec = byCwd.get(cwd);
+    if (!rec) {
+      rec = {
+        cwd,
+        name: sessionHistoryFolderLabel(cwd) || cwd,
+        activeSessions: [],
+        historyItems: [],
+        updatedAt: 0,
+      };
+      byCwd.set(cwd, rec);
+    }
+    rec.historyItems.push(h);
+    rec.updatedAt = Math.max(rec.updatedAt, Number(h.lastEventAt) || 0);
+  }
+  return Array.from(byCwd.values()).sort((a, b) => {
+    if ((b.activeSessions.length > 0) !== (a.activeSessions.length > 0)) {
+      return b.activeSessions.length > 0 ? 1 : -1;
+    }
+    return b.updatedAt - a.updatedAt;
+  });
+}
+
+function appendPendingApprovalsSection(fragment, now) {
+  const approvals = workspaceCtx && Array.isArray(workspaceCtx.pendingApprovals)
+    ? workspaceCtx.pendingApprovals
+    : [];
+  if (!approvals.length) return;
+
+  const panel = document.createElement("section");
+  panel.className = "approvals-panel";
+
+  const head = document.createElement("div");
+  head.className = "approvals-head";
+  head.appendChild(createText("div", "approvals-title", wt("approvalsTitle").replace("{n}", approvals.length)));
+
+  if (window.dashboardAPI && typeof window.dashboardAPI.workspaceAction === "function") {
+    const revealBtn = document.createElement("button");
+    revealBtn.type = "button";
+    revealBtn.className = "secondary-btn";
+    revealBtn.style.height = "24px";
+    revealBtn.style.minWidth = "0";
+    revealBtn.style.fontSize = "11px";
+    revealBtn.textContent = wt("revealBubble");
+    revealBtn.addEventListener("click", () => {
+      void window.dashboardAPI.workspaceAction({ type: "reveal-approvals" });
+    });
+    head.appendChild(revealBtn);
+  }
+  panel.appendChild(head);
+
+  for (const item of approvals) {
+    const row = document.createElement("div");
+    row.className = "approval-item";
+
+    const main = document.createElement("div");
+    main.className = "approval-item-main";
+
+    const top = document.createElement("div");
+    top.className = "approval-item-top";
+    top.appendChild(document.createTextNode(agentLabel(item.agentId)));
+    if (item.toolName) {
+      top.appendChild(createText("span", "approval-tool-tag", item.toolName));
+    }
+    if (item.cwd) {
+      top.appendChild(createText("span", "source-badge", sessionHistoryFolderLabel(item.cwd)));
+    }
+    top.appendChild(createText("span", "meta", formatElapsed(Math.max(0, now - (item.createdAt || now)))));
+    main.appendChild(top);
+
+    if (item.summary) {
+      main.appendChild(createText("div", "approval-item-cmd", item.summary));
+    }
+    row.appendChild(main);
+
+    if (item.sessionId) {
+      const jumpBtn = document.createElement("button");
+      jumpBtn.type = "button";
+      jumpBtn.style.height = "25px";
+      jumpBtn.style.minWidth = "0";
+      jumpBtn.textContent = t("dashboardJumpTerminal");
+      jumpBtn.addEventListener("click", () => {
+        window.dashboardAPI.focusSession(item.sessionId);
+      });
+      row.appendChild(jumpBtn);
+    }
+    panel.appendChild(row);
+  }
+
+  fragment.appendChild(panel);
+}
+
+function appendProjectsSection(fragment, sessions) {
+  if (!wsBodyEl) return;
+  const projects = collectProjectsModel(sessions, sessionHistory);
+  if (!projects.length && workspaceView !== "projects") return;
+
+  const section = document.createElement("section");
+  section.className = "group ws-projects-section";
+  section.appendChild(createText("h2", "group-title", wt("projectsTitle")));
+
+  if (!projects.length) {
+    section.appendChild(createText("p", "session-history-hint", wt("projectsEmpty")));
+    fragment.appendChild(section);
+    return;
+  }
+
+  const grid = document.createElement("div");
+  grid.className = "project-grid";
+
+  for (const proj of projects.slice(0, workspaceView === "projects" ? 24 : 6)) {
+    const card = document.createElement("article");
+    card.className = "project-card";
+
+    const main = document.createElement("div");
+    main.className = "project-main";
+    const nameEl = createText("div", "project-name", proj.name);
+    nameEl.title = proj.cwd;
+    const pathEl = createText("div", "project-path", proj.cwd);
+    pathEl.title = proj.cwd;
+
+    const metaParts = [];
+    if (proj.activeSessions.length > 0) {
+      metaParts.push(wt("projectActiveCount").replace("{n}", proj.activeSessions.length));
+    } else if (proj.historyItems.length > 0) {
+      metaParts.push(wt("projectRecentCount").replace("{n}", proj.historyItems.length));
+    }
+    const metaEl = createText("div", "project-meta", metaParts.join(" · "));
+    main.append(nameEl, pathEl, metaEl);
+    card.appendChild(main);
+
+    const actions = document.createElement("div");
+    actions.className = "project-actions";
+
+    const openBtn = document.createElement("button");
+    openBtn.type = "button";
+    openBtn.className = "open-folder-button";
+    openBtn.textContent = t("dashboardOpenFolder");
+    openBtn.addEventListener("click", () => {
+      if (proj.activeSessions[0] && canOfferLocalFolder(proj.activeSessions[0])) {
+        void window.dashboardAPI.openSessionFolder(proj.activeSessions[0].id);
+      } else if (window.dashboardAPI && typeof window.dashboardAPI.workspaceAction === "function") {
+        void window.dashboardAPI.workspaceAction({ type: "open-known-folder", cwd: proj.cwd });
+      }
+    });
+    actions.appendChild(openBtn);
+
+    const focusable = proj.activeSessions.find((s) => s && s.canFocus);
+    if (focusable) {
+      const jumpBtn = document.createElement("button");
+      jumpBtn.type = "button";
+      jumpBtn.textContent = "Focus";
+      jumpBtn.addEventListener("click", () => window.dashboardAPI.focusSession(focusable.id));
+      actions.appendChild(jumpBtn);
+    }
+
+    card.appendChild(actions);
+    grid.appendChild(card);
+  }
+
+  section.appendChild(grid);
+  fragment.appendChild(section);
+}
+
+function hasWorkspaceDom() {
+  return !!(wsBodyEl && wsNavEl && typeof wsNavEl.querySelectorAll === "function");
+}
+
+function renderWorkspaceChrome(sessions) {
+  if (!hasWorkspaceDom()) return;
+
+  wsBodyEl.setAttribute("data-view", workspaceView);
+
+  const runningCount = sessions.filter((s) => s && !s.headless && s.badge === "running").length;
+  const approvalsCount = workspaceCtx && Array.isArray(workspaceCtx.pendingApprovals)
+    ? workspaceCtx.pendingApprovals.length
+    : 0;
+
+  if (wsStatusDotEl) {
+    wsStatusDotEl.classList.toggle("has-approval", approvalsCount > 0);
+    wsStatusDotEl.classList.toggle("is-running", approvalsCount === 0 && runningCount > 0);
+  }
+
+  if (wsNavEl) {
+    const labels = {
+      overview: wt("navOverview"),
+      sessions: wt("navSessions"),
+      projects: wt("navProjects"),
+      services: wt("navServices"),
+    };
+    for (const btn of wsNavEl.querySelectorAll("[data-ws-view]")) {
+      const view = btn.getAttribute("data-ws-view");
+      if (labels[view]) btn.textContent = labels[view];
+      btn.classList.toggle("is-active", view === workspaceView);
+    }
+  }
+
+  if (wsLblCommandEl) wsLblCommandEl.textContent = wt("cmdButton");
+
+  const sys = (workspaceCtx && workspaceCtx.system) || {};
+  if (wsBtnDndEl && wsLblDndEl) {
+    wsBtnDndEl.classList.toggle("is-dnd", !!sys.doNotDisturb);
+    wsLblDndEl.textContent = sys.doNotDisturb ? wt("dndOn") : wt("dndOff");
+  }
+
+  if (wsClientButtonsEl && workspaceCtx && Array.isArray(workspaceCtx.clients)) {
+    const primaryClients = workspaceCtx.clients.filter((c) => c.id !== "antigravity-ide");
+    const sig = JSON.stringify(primaryClients);
+    if (sig !== lastClientButtonsSig) {
+      lastClientButtonsSig = sig;
+      wsClientButtonsEl.replaceChildren();
+      for (const client of primaryClients) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "ws-tool-btn";
+        btn.textContent = client.label;
+        btn.addEventListener("click", () => {
+          if (window.dashboardAPI && typeof window.dashboardAPI.workspaceAction === "function") {
+            void window.dashboardAPI.workspaceAction({ type: "launch-client", clientId: client.id });
+          }
+        });
+        wsClientButtonsEl.appendChild(btn);
+      }
+    }
+  }
+
+  if (wsQuotaTitleEl) wsQuotaTitleEl.textContent = wt("quotasTitle");
+  if (wsQuotaAgentSubheadEl) wsQuotaAgentSubheadEl.textContent = wt("codingAgents");
+  if (wsBtnPinQuotaEl) {
+    wsBtnPinQuotaEl.textContent = sys.quotaPinned ? wt("pinAlways") : wt("pinHover");
+    wsBtnPinQuotaEl.classList.toggle("is-active", !!sys.quotaPinned);
+  }
+
+  if (wsQuotaFallbackEl && quotaSummaryEl) {
+    const childList = quotaSummaryEl.children || quotaSummaryEl.childNodes || [];
+    const hasAgentQuota = !quotaSummaryEl.hidden && childList.length > 0;
+    wsQuotaFallbackEl.hidden = hasAgentQuota;
+    wsQuotaFallbackEl.textContent = wt("quotaFallback");
+  }
+
+  const railSig = JSON.stringify({
+    lang: (i18nPayload && i18nPayload.lang) || "en",
+    sys: {
+      platform: sys.platform,
+      arch: sys.arch,
+      osVersion: sys.osVersion,
+      hostname: sys.hostname,
+      freeMemGB: sys.freeMemBytes ? Math.round(sys.freeMemBytes / (1024 ** 3) * 10) : 0,
+      uptimeMin: sys.uptimeSec ? Math.floor(sys.uptimeSec / 60) : 0,
+      serverPort: sys.serverPort,
+    },
+    agents: workspaceCtx && workspaceCtx.agents,
+    clients: workspaceCtx && workspaceCtx.clients,
+  });
+
+  if (railSig === lastWorkspaceRailSig) return;
+  lastWorkspaceRailSig = railSig;
+
+  if (wsWebServicesEl) {
+    wsWebServicesEl.replaceChildren();
+    wsWebServicesEl.appendChild(createText("div", "rail-subhead", wt("webClients")));
+    const webDefs = [
+      { id: "chatgpt", name: "ChatGPT", launchClientId: null },
+      {
+        id: "gemini",
+        name: "Gemini",
+        launchClientId: (workspaceCtx && Array.isArray(workspaceCtx.clients)
+          && workspaceCtx.clients.some((c) => c.id === "gemini")) ? "gemini" : null,
+      },
+    ];
+    for (const svc of webDefs) {
+      const row = document.createElement("div");
+      row.className = "web-service-row";
+      const info = document.createElement("div");
+      info.className = "web-service-info";
+      const nameRow = document.createElement("div");
+      nameRow.className = "web-service-name";
+      nameRow.appendChild(document.createTextNode(svc.name));
+      nameRow.appendChild(createText("span", "web-scope-tag", "Web / App"));
+      info.appendChild(nameRow);
+      info.appendChild(createText("div", "web-service-note", wt("webQuotaUnavailable")));
+      row.appendChild(info);
+
+      if (svc.launchClientId && window.dashboardAPI && typeof window.dashboardAPI.workspaceAction === "function") {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "rail-pill-btn";
+        btn.textContent = wt("openApp");
+        btn.addEventListener("click", () => {
+          void window.dashboardAPI.workspaceAction({ type: "launch-client", clientId: svc.launchClientId });
+        });
+        row.appendChild(btn);
+      }
+      wsWebServicesEl.appendChild(row);
+    }
+  }
+
+  if (wsSystemTitleEl) wsSystemTitleEl.textContent = wt("systemTitle");
+  if (wsBtnManageAgentsEl) wsBtnManageAgentsEl.textContent = wt("manageAgents");
+
+  if (wsSystemKvEl) {
+    wsSystemKvEl.replaceChildren();
+    const platformName = sys.platform === "darwin" ? "macOS" : (sys.platform === "win32" ? "Windows" : (sys.platform || "Local"));
+    const rows = [
+      [wt("sysDevice"), [platformName, sys.osVersion, sys.arch].filter(Boolean).join(" · ")],
+      [wt("sysMemory"), sys.totalMemBytes ? `${formatBytesGB(sys.freeMemBytes)} / ${formatBytesGB(sys.totalMemBytes)}` : "—"],
+      [wt("sysUptime"), formatUptime(sys.uptimeSec)],
+      [wt("sysBridge"), sys.serverPort ? wt("sysListening").replace("{port}", sys.serverPort) : wt("sysStarting")],
+    ];
+    for (const [k, v] of rows) {
+      const r = document.createElement("div");
+      r.className = "sys-kv-row";
+      r.append(createText("span", "sys-kv-label", k), createText("span", "sys-kv-value", v));
+      wsSystemKvEl.appendChild(r);
+    }
+  }
+
+  if (wsAgentHealthEl && workspaceCtx && Array.isArray(workspaceCtx.agents)) {
+    wsAgentHealthEl.replaceChildren();
+    for (const ag of workspaceCtx.agents) {
+      const r = document.createElement("div");
+      r.className = "agent-health-row";
+      const left = document.createElement("div");
+      left.className = "agent-health-left";
+      if (ag.iconUrl) {
+        const img = document.createElement("img");
+        img.className = "agent-health-icon";
+        img.src = ag.iconUrl;
+        img.alt = "";
+        img.addEventListener("error", () => img.remove(), { once: true });
+        left.appendChild(img);
+      }
+      left.appendChild(createText("span", "", ag.name));
+      const ready = ag.enabled && ag.integrationInstalled;
+      const pill = createText(
+        "span",
+        `agent-health-pill${ready ? " is-ready" : ""}`,
+        !ag.integrationInstalled ? wt("agentUninstalled") : (ag.enabled ? wt("agentReady") : wt("agentPaused"))
+      );
+      r.append(left, pill);
+      wsAgentHealthEl.appendChild(r);
+    }
+  }
+}
+
+function initWorkspaceControls() {
+  if (!hasWorkspaceDom()) return;
+
+  if (wsNavEl) {
+    wsNavEl.addEventListener("click", (event) => {
+      const btn = event.target.closest("[data-ws-view]");
+      if (!btn) return;
+      const next = btn.getAttribute("data-ws-view");
+      if (next && next !== workspaceView) {
+        workspaceView = next;
+        render({ force: true });
+      }
+    });
+  }
+
+  if (wsBtnCommandEl) {
+    wsBtnCommandEl.addEventListener("click", () => {
+      if (window.dashboardAPI && typeof window.dashboardAPI.workspaceAction === "function") {
+        void window.dashboardAPI.workspaceAction({ type: "open-command" });
+      }
+    });
+  }
+
+  if (wsBtnDndEl) {
+    wsBtnDndEl.addEventListener("click", async () => {
+      if (!window.dashboardAPI || typeof window.dashboardAPI.workspaceAction !== "function") return;
+      const res = await window.dashboardAPI.workspaceAction({ type: "toggle-dnd" });
+      if (res && typeof res.doNotDisturb === "boolean" && workspaceCtx && workspaceCtx.system) {
+        workspaceCtx.system.doNotDisturb = res.doNotDisturb;
+        renderWorkspaceChrome(snapshot.sessions || []);
+      }
+    });
+  }
+
+  if (wsBtnSettingsEl) {
+    wsBtnSettingsEl.addEventListener("click", () => {
+      if (window.dashboardAPI && typeof window.dashboardAPI.workspaceAction === "function") {
+        void window.dashboardAPI.workspaceAction({ type: "open-settings" });
+      }
+    });
+  }
+
+  if (wsBtnPinQuotaEl) {
+    wsBtnPinQuotaEl.addEventListener("click", async () => {
+      if (!window.dashboardAPI || typeof window.dashboardAPI.workspaceAction !== "function") return;
+      const res = await window.dashboardAPI.workspaceAction({ type: "toggle-quota-pinned" });
+      if (res && typeof res.quotaPinned === "boolean" && workspaceCtx && workspaceCtx.system) {
+        workspaceCtx.system.quotaPinned = res.quotaPinned;
+        renderWorkspaceChrome(snapshot.sessions || []);
+      }
+    });
+  }
+
+  if (wsBtnManageAgentsEl) {
+    wsBtnManageAgentsEl.addEventListener("click", () => {
+      if (window.dashboardAPI && typeof window.dashboardAPI.workspaceAction === "function") {
+        void window.dashboardAPI.workspaceAction({ type: "open-settings", tab: "agents" });
+      }
+    });
+  }
+}
+
 function render(options = {}) {
   // A round that ended settles here if no scroll or layout signal closed it
   // first: the guard must never stay armed indefinitely.
@@ -2306,20 +2887,33 @@ function render(options = {}) {
     if (!liveAutomationActionKeys.has(key)) sessionAutomationActionState.delete(key);
   }
   pruneSessionFolderActionState(sessions, now);
-  titleEl.textContent = t("dashboardWindowTitle");
+  const isWsDom = hasWorkspaceDom();
+  titleEl.textContent = isWsDom ? wt("workspaceTitle") : t("dashboardWindowTitle");
   countEl.textContent = t("dashboardCount").replace("{n}", count);
-  document.title = t("dashboardWindowTitle");
+  document.title = isWsDom ? `Character OS · ${wt("workspaceTitle")}` : t("dashboardWindowTitle");
   renderQuotaSummary(snapshot);
+  renderWorkspaceChrome(sessions);
 
   renderQuickBanner();
 
+  const approvalsCount = workspaceCtx && Array.isArray(workspaceCtx.pendingApprovals)
+    ? workspaceCtx.pendingApprovals.length
+    : 0;
   const orphanCount = Array.isArray(snapshot.sessionAutomationOrphans)
     ? snapshot.sessionAutomationOrphans.length
     : 0;
+
+  if (isWsDom && workspaceView === "projects") {
+    const projFragment = document.createDocumentFragment();
+    appendProjectsSection(projFragment, sessions);
+    contentEl.replaceChildren(projFragment);
+    return;
+  }
+
   // A round with a frozen presentation keeps rendering its own groups even if
   // every session in them disappeared — the numbered slots still belong to
   // this round and must not collapse into the generic empty state.
-  if (count === 0 && orphanCount === 0 && !(quick.active && quick.skeleton)) {
+  if (count === 0 && orphanCount === 0 && approvalsCount === 0 && !(quick.active && quick.skeleton)) {
     renderEmpty();
     return;
   }
@@ -2327,9 +2921,13 @@ function render(options = {}) {
   const byId = new Map(sessions.map((session) => [session.id, session]));
   const fragment = document.createDocumentFragment();
 
+  appendPendingApprovalsSection(fragment, now);
   // While a round is on, the groups come from its frozen presentation; the
   // ordinary dynamic ordering resumes as soon as it ends.
   appendSessionGroups(fragment, byId, now);
+  if (isWsDom && workspaceView === "overview") {
+    appendProjectsSection(fragment, sessions);
+  }
   appendSessionAutomationOrphans(fragment);
   appendSessionHistory(fragment, now);
 
@@ -2361,20 +2959,32 @@ async function init() {
     render();
   });
 
-  const [nextI18n, nextSnapshot, nextKimiQuotaStatus] = await Promise.all([
+  const [nextI18n, nextSnapshot, nextKimiQuotaStatus, nextWorkspaceCtx] = await Promise.all([
     window.dashboardAPI.getI18n(),
     window.dashboardAPI.getSnapshot(),
     window.dashboardAPI && typeof window.dashboardAPI.getKimiQuotaStatus === "function"
       ? window.dashboardAPI.getKimiQuotaStatus()
       : Promise.resolve(null),
+    window.dashboardAPI && typeof window.dashboardAPI.getWorkspaceContext === "function"
+      ? window.dashboardAPI.getWorkspaceContext().catch(() => null)
+      : Promise.resolve(null),
   ]);
   i18nPayload = nextI18n || i18nPayload;
   snapshot = nextSnapshot || snapshot;
   kimiQuotaStatus = nextKimiQuotaStatus || null;
+  if (nextWorkspaceCtx && !nextWorkspaceCtx.reason && typeof nextWorkspaceCtx === "object") {
+    workspaceCtx = nextWorkspaceCtx;
+  }
+  initWorkspaceControls();
   render();
   void reloadSessionHistory();
 
   setInterval(render, 1000);
+  if (hasWorkspaceDom()) {
+    setInterval(() => {
+      void reloadWorkspaceContext().then(() => renderWorkspaceChrome(snapshot.sessions || []));
+    }, 3000);
+  }
 
   initQuickMode();
 }

@@ -5,15 +5,30 @@ const messageInput = el("message");
 const transcript = el("transcript");
 const viewport = el("viewport");
 const settings = el("settings");
+const historyDrawer = el("history-drawer");
+const toggleHistoryBtn = el("toggle-history");
+
 let state;
 let settingsRequested = false;
 let pending = false;
 let sidebarKey = "";
 let transcriptKey = "";
+let historyOpen = false;
 
 function showError(target, message = "") {
   target.hidden = !message;
   target.textContent = message;
+}
+
+function syncTextareaHeight() {
+  messageInput.style.height = "auto";
+  messageInput.style.height = `${Math.min(150, Math.max(24, messageInput.scrollHeight))}px`;
+}
+
+function setHistoryOpen(next) {
+  historyOpen = Boolean(next);
+  historyDrawer.hidden = !historyOpen;
+  toggleHistoryBtn.setAttribute("aria-expanded", historyOpen ? "true" : "false");
 }
 
 function updateComposer() {
@@ -31,25 +46,28 @@ function render(next) {
   const follow = changedSession || viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop < 72;
   state = next;
   const selected = state.sessions.find(session => session.id === state.selectedId);
-  el("title").textContent = selected?.title || "Chat";
+  el("title").textContent = selected?.title || "Command";
 
   const navKey = JSON.stringify([state.selectedId, state.sessions]);
   if (navKey !== sidebarKey) {
     sidebarKey = navKey;
-    const selectedButton = document.activeElement?.dataset.sessionId;
     const buttons = state.sessions.map(session => {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "session";
       button.dataset.sessionId = session.id;
-      button.textContent = session.title || "New chat";
+      button.textContent = session.title || "Untitled thread";
       button.title = button.textContent;
       if (session.id === state.selectedId) button.setAttribute("aria-current", "true");
-      button.addEventListener("click", () => action(() => window.chat.select(session.id)));
+      button.addEventListener("click", async () => {
+        setHistoryOpen(false);
+        if (await action(() => window.chat.select(session.id))) {
+          messageInput.focus();
+        }
+      });
       return button;
     });
     el("sessions").replaceChildren(...buttons);
-    buttons.find(button => button.dataset.sessionId === selectedButton)?.focus();
   }
 
   const messageKey = JSON.stringify(state.messages);
@@ -64,7 +82,6 @@ function render(next) {
       }
       const body = document.createElement("div");
       body.className = "markdown";
-      // Supplied by the main process from markdown-it with raw HTML and images disabled.
       body.innerHTML = message.html;
       row.append(body);
       if (message.detail) {
@@ -82,7 +99,11 @@ function render(next) {
   const configured = Boolean(state.model.baseUrl && state.model.model);
   el("setup-message").hidden = configured;
   el("configure").hidden = configured;
-  el("model-settings").title = state.model.model || "Connect a model";
+  el("model-dot").classList.toggle("is-ready", configured);
+  el("model-label").textContent = configured ? state.model.model : "Connect model";
+  el("model-settings").title = configured
+    ? `${state.model.model} · Click to edit endpoint`
+    : "Connect an OpenAI-compatible model endpoint";
   showError(el("chat-error"), state.notice);
   updateComposer();
   if (follow) viewport.scrollTop = viewport.scrollHeight;
@@ -103,7 +124,7 @@ async function action(run, errorTarget = el("chat-error")) {
     render(result.state);
     return true;
   } catch {
-    showError(errorTarget, "Could not reach the chat window.");
+    showError(errorTarget, "Could not reach the command window.");
     return false;
   } finally {
     pending = false;
@@ -114,16 +135,18 @@ async function action(run, errorTarget = el("chat-error")) {
 function showSettings() {
   if (!state) return;
   settingsRequested = false;
+  setHistoryOpen(false);
   if (settings.open) return;
   el("base-url").value = state.model.baseUrl;
   el("model-id").value = state.model.model;
   el("system-prompt").value = state.model.systemPrompt;
   el("api-key").value = "";
-  el("api-key").placeholder = state.model.hasKey ? "Saved · enter a new key to replace"
+  el("api-key").placeholder = state.model.hasKey
+    ? "Saved · enter a new key to replace"
     : "Optional for endpoints without authentication";
   el("key-hint").textContent = state.model.hasKey
     ? "Key saved securely. Changing the endpoint clears this key unless you enter a replacement."
-    : "Keys are encrypted using your system’s secure storage.";
+    : "Keys are encrypted locally with your system secure storage.";
   el("clear-key").checked = false;
   el("clear-key-row").hidden = !state.model.hasKey;
   showError(el("settings-error"));
@@ -135,15 +158,54 @@ window.chat.onOpenModelSettings(() => {
   settingsRequested = true;
   showSettings();
 });
-void action(window.chat.get);
+if (typeof window.chat.onFocusInput === "function") {
+  window.chat.onFocusInput(() => {
+    if (!settings.open) messageInput.focus();
+  });
+}
+
+void action(window.chat.get).then(() => {
+  if (!settings.open) messageInput.focus();
+});
+
+toggleHistoryBtn.addEventListener("click", (event) => {
+  event.stopPropagation();
+  setHistoryOpen(!historyOpen);
+});
+
+document.addEventListener("click", (event) => {
+  if (!historyOpen) return;
+  if (historyDrawer.contains(event.target) || toggleHistoryBtn.contains(event.target)) return;
+  setHistoryOpen(false);
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && historyOpen) {
+    event.preventDefault();
+    setHistoryOpen(false);
+    messageInput.focus();
+    return;
+  }
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "n") {
+    event.preventDefault();
+    setHistoryOpen(false);
+    void action(window.chat.create).then((ok) => {
+      if (ok) messageInput.focus();
+    });
+  }
+});
 
 el("new-chat").addEventListener("click", async () => {
+  setHistoryOpen(false);
   if (await action(window.chat.create)) messageInput.focus();
 });
 el("model-settings").addEventListener("click", showSettings);
 el("configure").addEventListener("click", showSettings);
 el("cancel-settings").addEventListener("click", () => settings.close());
-settings.addEventListener("close", () => { el("api-key").value = ""; });
+settings.addEventListener("close", () => {
+  el("api-key").value = "";
+  messageInput.focus();
+});
 el("model-form").addEventListener("submit", async event => {
   event.preventDefault();
   el("save-model").disabled = true;
@@ -162,7 +224,10 @@ el("model-form").addEventListener("submit", async event => {
   }
 });
 
-messageInput.addEventListener("input", updateComposer);
+messageInput.addEventListener("input", () => {
+  syncTextareaHeight();
+  updateComposer();
+});
 messageInput.addEventListener("keydown", event => {
   if (event.key === "Enter" && !event.shiftKey && !event.isComposing && event.keyCode !== 229) {
     event.preventDefault();
@@ -178,7 +243,10 @@ el("composer").addEventListener("submit", async event => {
     return;
   }
   if (await action(() => window.chat.send(value))) {
-    if (messageInput.value === value) messageInput.value = "";
+    if (messageInput.value === value) {
+      messageInput.value = "";
+      syncTextareaHeight();
+    }
     viewport.scrollTop = viewport.scrollHeight;
   }
   updateComposer();

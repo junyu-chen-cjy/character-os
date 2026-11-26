@@ -14,7 +14,7 @@ const isWin = platform === "win32";
 const isLinux = platform === "linux";
 const MENU_FOCUS_WAIT_MS = 200;
 const MENU_OWNER_HIDE_DELAY_MS = 500;
-const TRAY_TOOLTIP = "Clawd Desktop Pet";
+const TRAY_TOOLTIP = "Character OS";
 
 // Login-item / autostart helpers and the openAtLogin write path live in
 // src/login-item.js + main.js's settings-actions effect. menu.js used to

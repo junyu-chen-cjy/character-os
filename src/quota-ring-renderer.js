@@ -755,6 +755,12 @@ async function init() {
 
   const i18n = await window.quotaRingAPI.getI18n();
   if (i18n) payload = { ...payload, translations: i18n.translations || {}, lang: i18n.lang };
+  if (typeof document.addEventListener === "function"
+      && window.quotaRingAPI
+      && typeof window.quotaRingAPI.notifyHover === "function") {
+    document.addEventListener("pointerenter", () => window.quotaRingAPI.notifyHover(true));
+    document.addEventListener("pointerleave", () => window.quotaRingAPI.notifyHover(false));
+  }
   // Establish the baseline before the first paint so a cold start never opens
   // on a flashback.
   noteRestingWindows(collectCoins(Date.now()), Date.now());

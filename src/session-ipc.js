@@ -77,6 +77,22 @@ function registerSessionIpc(options = {}) {
 
   handle("dashboard:get-snapshot", () => getSessionSnapshot());
   handle("dashboard:get-i18n", () => getI18n());
+  if (typeof options.getWorkspaceContext === "function") {
+    handle("dashboard:get-workspace-context", (event) => {
+      const rejected = rejectUntrustedDashboardEvent(event);
+      return rejected || options.getWorkspaceContext();
+    });
+  }
+  if (typeof options.runWorkspaceAction === "function") {
+    handle("dashboard:workspace-action", (event, payload) => {
+      const rejected = rejectUntrustedDashboardEvent(event);
+      if (rejected) return rejected;
+      if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+        return { status: "invalid" };
+      }
+      return options.runWorkspaceAction(payload);
+    });
+  }
   // Dashboard gets a narrow, secret-free manual refresh capability. The API
   // key remains inside kimiQuotaRuntime, and only the real local Dashboard
   // main frame may ask for status or trigger the existing refresh path.

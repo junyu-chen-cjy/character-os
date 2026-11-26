@@ -2984,6 +2984,8 @@ const openDashboardSessionFolder = createSessionFolderOpener({
 });
 
 const _dashboard = require("./dashboard")({
+  defaultWidth: 960,
+  defaultHeight: 680,
   get lang() { return lang; },
   t: (key) => translate(key),
   getSessionSnapshot: () => _state.buildSessionSnapshot(),
@@ -3028,6 +3030,51 @@ app.on("before-quit", () => _dashboard.quick.dispose());
 app.on("will-quit", () => _dashboard.quick.dispose());
 
 const _ringGeom = require("./quota-ring-geometry");
+const initPetHalo = require("./pet-halo");
+
+const _petHalo = initPetHalo({
+  ipcMain,
+  get win() { return win; },
+  get petHidden() { return petWindowRuntime.isPetEffectivelyHidden(); },
+  get menuOpen() { return menuOpen; },
+  get sessionHudShowQuota() { return sessionHudShowQuota; },
+  get quotaRingDisplayMode() { return quotaRingDisplayMode; },
+  get quotaRingShownProviders() { return quotaRingShownProviders; },
+  get quotaRingHiddenProviders() { return quotaRingHiddenProviders; },
+  get sessionHudPinned() { return sessionHudPinned; },
+  isDragLocked: () => petWindowRuntime.isDragLocked(),
+  getMiniMode: () => _mini.getMiniMode(),
+  getMiniTransitioning: () => _mini.getMiniTransitioning(),
+  getSessionSnapshot: () => _state.buildSessionSnapshot(),
+  getPendingPermissions: () => pendingPermissions,
+  getI18n: () => getDashboardI18nPayload(),
+  getLang: () => lang,
+  t: (key) => translate(key),
+  getDoNotDisturb: () => doNotDisturb,
+  enableDoNotDisturb: () => enableDoNotDisturb(),
+  disableDoNotDisturb: () => disableDoNotDisturb(),
+  setSessionHudPinned: (value) => _settingsController.applyUpdate("sessionHudPinned", !!value),
+  openDashboard: (options) => showDashboard(options),
+  openChat: () => chatWindow.open(),
+  openSettingsWindow: (options) => settingsWindowRuntime.open(options),
+  getPetWindowBounds,
+  getHitRectScreen,
+  getSessionHudAnchorRect,
+  getNearestWorkArea,
+  getTextScale: () => getTextScaleForPetWindows(),
+  getPermissionBubbleBounds: () => _perm.getVisibleBubbleBounds(),
+  guardAlwaysOnTop,
+  reapplyMacVisibility,
+  onReservedOffsetChange: () => repositionFloatingBubbles(),
+});
+repositionSessionHud = _petHalo.repositionSessionHud;
+repositionQuotaRing = _petHalo.repositionQuotaRing;
+syncSessionHudVisibility = _petHalo.syncSessionHud;
+broadcastSessionHudSnapshot = _petHalo.broadcastSessionSnapshot;
+sendSessionHudI18n = _petHalo.sendI18n;
+getSessionHudReservedOffset = _petHalo.getHudReservedOffset;
+getSessionHudWindow = _petHalo.getWindow;
+getQuotaRingWindow = _petHalo.getQuotaRingWindow;
 
 
 
@@ -4677,7 +4724,10 @@ const _menuCtx = {
   set isQuitting(v) { isQuitting = v; },
   get menuOpen() { return menuOpen; },
   set menuOpen(v) {
-    if (v) _mini.cancelPendingMiniPeek(true);
+    if (v) {
+      _mini.cancelPendingMiniPeek(true);
+      _petHalo.notifyImmediateSuppression();
+    }
     menuOpen = v;
   },
   get tray() { return tray; },
@@ -4908,6 +4958,9 @@ const settingsEffectRouter = createSettingsEffectRouter({
   repositionFloatingBubbles,
   applyTextScale: () => applyTextScaleNow(),
   syncSessionHudVisibility: () => syncSessionHudVisibility(),
+  handleSessionHudPinnedChanged: (next) => {
+    _petHalo.handlePinnedChanged(next);
+  },
   reclampPetAfterEdgePinningChange,
   // #1276: the tick owns gaze dedup state, so it also owns the enable/disable
   // transition (resend on enable, park-at-center + pointer-bridge reset on
@@ -5118,11 +5171,126 @@ const openOpencodeSessionInTerminal = createOpencodeSessionAttacher({
   isAgentEnabled: (agentId) => _runtimeAgentGate.isAgentEnabled(agentId),
 });
 
+function buildWorkspaceContextPayload() {
+  const os = require("node:os");
+  const settingsSnap = _settingsController.getSnapshot();
+  const agentsPrefs = (settingsSnap && settingsSnap.agents) || {};
+  const productAgentList = getAllAgents()
+    .filter((agent) => isProductAgent(agent.id))
+    .map((agent) => {
+      const flags = agentsPrefs[agent.id] || {};
+      return {
+        id: agent.id,
+        name: agent.name,
+        enabled: flags.enabled !== false,
+        integrationInstalled: flags.integrationInstalled === true,
+        iconUrl: getAgentIconUrl(agent.id) || "",
+      };
+    });
+
+  const pendingApprovals = (Array.isArray(pendingPermissions) ? pendingPermissions : []).map((perm) => ({
+    id: perm.id || "",
+    sessionId: perm.sessionId || "",
+    agentId: perm.agentId || "",
+    toolName: perm.toolName || "",
+    cwd: perm.cwd || "",
+    summary: typeof perm.command === "string" && perm.command
+      ? perm.command.slice(0, 180)
+      : (typeof perm.summary === "string" ? perm.summary.slice(0, 180) : ""),
+    createdAt: Number(perm.createdAt) || Date.now(),
+  }));
+
+  const cpus = os.cpus() || [];
+  const clients = isMac
+    ? initPetHalo.MAC_AGENT_CLIENTS.map(({ id, label, kind }) => ({ id, label, kind }))
+    : [
+      { id: "codex", label: "Codex", kind: "agent" },
+      { id: "antigravity", label: "Antigravity", kind: "ide" },
+    ];
+
+  return {
+    status: "ok",
+    pendingApprovals,
+    agents: productAgentList,
+    clients,
+    system: {
+      platform: process.platform,
+      arch: process.arch,
+      osVersion: typeof process.getSystemVersion === "function" ? process.getSystemVersion() : os.release(),
+      hostname: os.hostname(),
+      cpuCount: cpus.length,
+      cpuModel: (cpus[0] && cpus[0].model) ? String(cpus[0].model).trim() : "",
+      totalMemBytes: os.totalmem(),
+      freeMemBytes: os.freemem(),
+      uptimeSec: Math.floor(os.uptime()),
+      serverPort: getHookServerPort(),
+      doNotDisturb: !!doNotDisturb,
+      quotaPinned: !!sessionHudPinned,
+    },
+  };
+}
+
+async function runWorkspaceActionFromDashboard(payload) {
+  const type = typeof payload.type === "string" ? payload.type : "";
+  if (type === "open-command") {
+    chatWindow.open();
+    return { status: "ok" };
+  }
+  if (type === "open-settings") {
+    const tab = typeof payload.tab === "string" ? payload.tab : undefined;
+    settingsWindowRuntime.open(tab ? { tab } : {});
+    return { status: "ok" };
+  }
+  if (type === "launch-client") {
+    return initPetHalo.launchAgentClientApp(String(payload.clientId || ""), {
+      t: translate,
+      showDashboard,
+    });
+  }
+  if (type === "toggle-dnd") {
+    const next = !doNotDisturb;
+    if (next) enableDoNotDisturb();
+    else disableDoNotDisturb();
+    return { status: "ok", doNotDisturb: next };
+  }
+  if (type === "toggle-quota-pinned") {
+    const next = !sessionHudPinned;
+    await _settingsController.applyUpdate("sessionHudPinned", next);
+    return { status: "ok", quotaPinned: next };
+  }
+  if (type === "reveal-approvals") {
+    topmostRuntime.raisePetWindows();
+    return { status: "ok" };
+  }
+  if (type === "open-known-folder") {
+    const targetCwd = typeof payload.cwd === "string" ? payload.cwd.trim() : "";
+    if (!targetCwd) return { status: "invalid" };
+    const knownCwds = new Set();
+    for (const s of _state.sessions.values()) {
+      if (s && typeof s.cwd === "string" && s.cwd) knownCwds.add(s.cwd);
+    }
+    try {
+      const hist = await sessionHistoryRuntime.getHistory();
+      if (Array.isArray(hist)) {
+        for (const h of hist) {
+          if (h && typeof h.cwd === "string" && h.cwd) knownCwds.add(h.cwd);
+        }
+      }
+    } catch {}
+    if (!knownCwds.has(targetCwd)) return { status: "rejected" };
+    const err = await shell.openPath(targetCwd);
+    return err ? { status: "error", message: err } : { status: "ok" };
+  }
+  return { status: "unsupported" };
+}
+
 registerSessionIpc({
   enableAuxiliarySurfaces: false,
   ipcMain,
   getSessionSnapshot: () => _state.buildSessionSnapshot(),
   getI18n: () => getDashboardI18nPayload(),
+  getWorkspaceContext: () => buildWorkspaceContextPayload(),
+  runWorkspaceAction: (payload) => runWorkspaceActionFromDashboard(payload),
   getDashboardWebContents: () => _dashboard.getWebContents(),
   quickMode: _dashboard.quick,
   getKimiQuotaStatus: () => _kimiQuotaRuntime.getStatus(),
@@ -5305,6 +5473,7 @@ function createWindow() {
       if (value) {
         _mini.cancelPendingMiniPeek(true);
         topmostRuntime.raisePetWindows();
+        _petHalo.notifyImmediateSuppression();
       }
       petWindowRuntime.setDragLocked(value);
     },
@@ -5335,6 +5504,7 @@ function createWindow() {
     focusLog: (message) => focusLog(message),
     showDashboard: () => showDashboard(),
     openChat: chatWindow.open,
+    onPetHover: (hovered) => _petHalo.handleHoverSignal("pet", hovered),
     getHitWindow: () => hitWin,
     enableLegacyFocus: false,
     focusSession: (sessionId, options) => focusDashboardSession(sessionId, options),
@@ -6098,6 +6268,7 @@ if (!gotTheLock) {
     _tick.cleanup();
     _mini.cleanup();
     if (macHideController) macHideController.stop();
+    _petHalo.cleanup();
     agentRuntime.cleanup();
     topmostRuntime.cleanup();
     themeRuntime.cleanup();

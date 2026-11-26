@@ -416,9 +416,9 @@ test("settings window runtime reuses an existing non-destroyed Settings window",
   ]);
 });
 
-test("settings window holds a requested recap tab until the new renderer is ready", () => {
+test("settings window holds a requested agents tab until the new renderer is ready", () => {
   const { runtime } = createRuntime();
-  runtime.open({ tab: "recap" });
+  runtime.open({ tab: "agents" });
   const win = FakeBrowserWindow.instances[0];
   assert.equal(win.calls.some((call) => Array.isArray(call) && call[0] === "send"), false);
 
@@ -426,13 +426,13 @@ test("settings window holds a requested recap tab until the new renderer is read
   assert.deepStrictEqual(win.calls.find((call) => Array.isArray(call) && call[0] === "send"), [
     "send",
     "settings:select-tab",
-    "recap",
+    "agents",
   ]);
 });
 
-test("settings window accepts a requested sessions tab through the whitelist", () => {
+test("settings window accepts a requested models tab through the whitelist", () => {
   const { runtime } = createRuntime();
-  runtime.open({ tab: "sessions" });
+  runtime.open({ tab: "models" });
   const win = FakeBrowserWindow.instances[0];
   assert.equal(win.calls.some((call) => Array.isArray(call) && call[0] === "send"), false);
 
@@ -440,7 +440,7 @@ test("settings window accepts a requested sessions tab through the whitelist", (
   assert.deepStrictEqual(win.calls.find((call) => Array.isArray(call) && call[0] === "send"), [
     "send",
     "settings:select-tab",
-    "sessions",
+    "models",
   ]);
 });
 
@@ -467,13 +467,13 @@ test("settings window deep-link survives a reopen before load and reaches a mini
   const { runtime, timers } = createRuntime();
   runtime.open();
   const win = FakeBrowserWindow.instances[0];
-  runtime.open({ tab: "recap" });
+  runtime.open({ tab: "data" });
   assert.equal(win.calls.some((call) => Array.isArray(call) && call[0] === "send"), false);
   win.emitWebContents("did-finish-load");
   assert.deepStrictEqual(win.calls.find((call) => Array.isArray(call) && call[0] === "send"), [
     "send",
     "settings:select-tab",
-    "recap",
+    "data",
   ]);
 
   win.emit("ready-to-show");
@@ -481,9 +481,9 @@ test("settings window deep-link survives a reopen before load and reaches a mini
   if (lift) lift.callback();
   win.calls = [];
   win.minimized = true;
-  runtime.open({ tab: "recap" });
+  runtime.open({ tab: "data" });
   assert.deepStrictEqual(win.calls, [
-    ["send", "settings:select-tab", "recap"],
+    ["send", "settings:select-tab", "data"],
     "restore",
     "show",
     ["setAlwaysOnTop", true, undefined],

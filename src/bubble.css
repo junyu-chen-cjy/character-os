@@ -1,65 +1,73 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
-/* ── Theme variables ── */
+/* ── Character OS Permission & Status Bubble ── */
 :root {
-  --ease-spring: var(--ease-spring);
-  --card-bg: #ffffff;
-  --card-border: rgba(0, 0, 0, 0.08);
-  --card-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08);
-  --card-inset: none;
-  --text-primary: #18181b;
-  --header-color: #374151;
-  --cmd-bg: #f4f4f5;
-  --cmd-border: rgba(0, 0, 0, 0.06);
-  --cmd-color: #374151;
-  --cmd-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.06);
-  --scroll-thumb: rgba(0, 0, 0, 0.15);
-  --scroll-thumb-hover: rgba(0, 0, 0, 0.25);
-  --deny-bg: #ffffff;
-  --deny-color: #52525b;
-  --deny-border: #d1d5db;
-  --deny-hover-bg: #f9fafb;
-  --deny-hover-border: #9ca3af;
-  --sug-bg: #ffffff;
-  --sug-color: #71717a;
-  --sug-border: #e5e7eb;
-  --sug-hover-bg: #f9fafb;
-  --sug-hover-border: #d1d5db;
-  --sug-hover-color: #374151;
-  --sug-arrow: #9ca3af;
-  --irreversible-color: #8a5a00;
-  --irreversible-bg: rgba(255, 176, 32, 0.14);
-  --irreversible-border: rgba(255, 176, 32, 0.45);
+  color-scheme: light dark;
+  --ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
+  --card-bg: rgba(250, 250, 252, 0.88);
+  --card-border: rgba(0, 0, 0, 0.085);
+  --card-shadow: 0 12px 32px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.06);
+  --card-inset: inset 0 0.5px 0 rgba(255, 255, 255, 0.78);
+  --text-primary: #141417;
+  --header-color: #1d1d20;
+  --cmd-bg: rgba(0, 0, 0, 0.045);
+  --cmd-border: rgba(0, 0, 0, 0.065);
+  --cmd-color: #27272a;
+  --cmd-shadow: none;
+  --scroll-thumb: rgba(0, 0, 0, 0.16);
+  --scroll-thumb-hover: rgba(0, 0, 0, 0.28);
+  --allow-bg: #0066cc;
+  --allow-hover: #0055ad;
+  --allow-ink: #ffffff;
+  --deny-bg: rgba(0, 0, 0, 0.045);
+  --deny-color: #3f3f46;
+  --deny-border: rgba(0, 0, 0, 0.08);
+  --deny-hover-bg: rgba(0, 0, 0, 0.08);
+  --deny-hover-border: rgba(0, 0, 0, 0.14);
+  --sug-bg: rgba(255, 255, 255, 0.55);
+  --sug-color: #52525b;
+  --sug-border: rgba(0, 0, 0, 0.075);
+  --sug-hover-bg: rgba(255, 255, 255, 0.85);
+  --sug-hover-border: rgba(0, 0, 0, 0.14);
+  --sug-hover-color: #18181b;
+  --sug-arrow: #71717a;
+  --irreversible-color: #92400e;
+  --irreversible-bg: rgba(245, 158, 11, 0.12);
+  --irreversible-border: rgba(245, 158, 11, 0.35);
 }
+
 @media (prefers-color-scheme: dark) {
   :root {
-    --card-bg: #18181b;
-    --card-border: rgba(255, 255, 255, 0.1);
-    --card-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-    --card-inset: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-    --text-primary: #f4f4f5;
-    --header-color: #e4e4e7;
-    --cmd-bg: #09090b;
-    --cmd-border: rgba(255, 255, 255, 0.06);
-    --cmd-color: #a1a1aa;
-    --cmd-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
-    --scroll-thumb: rgba(255, 255, 255, 0.1);
-    --scroll-thumb-hover: rgba(255, 255, 255, 0.2);
-    --deny-bg: rgba(255, 255, 255, 0.05);
+    --card-bg: rgba(28, 28, 32, 0.88);
+    --card-border: rgba(255, 255, 255, 0.12);
+    --card-shadow: 0 14px 34px rgba(0, 0, 0, 0.44), 0 2px 6px rgba(0, 0, 0, 0.28);
+    --card-inset: inset 0 0.5px 0 rgba(255, 255, 255, 0.11);
+    --text-primary: #f5f5f7;
+    --header-color: #f4f4f6;
+    --cmd-bg: rgba(0, 0, 0, 0.32);
+    --cmd-border: rgba(255, 255, 255, 0.07);
+    --cmd-color: #d4d4d8;
+    --cmd-shadow: none;
+    --scroll-thumb: rgba(255, 255, 255, 0.14);
+    --scroll-thumb-hover: rgba(255, 255, 255, 0.24);
+    --allow-bg: #2984ff;
+    --allow-hover: #4092ff;
+    --allow-ink: #ffffff;
+    --deny-bg: rgba(255, 255, 255, 0.07);
     --deny-color: #e4e4e7;
-    --deny-border: rgba(255, 255, 255, 0.1);
-    --deny-hover-bg: rgba(255, 255, 255, 0.1);
-    --deny-hover-border: rgba(255, 255, 255, 0.15);
-    --sug-bg: rgba(255, 255, 255, 0.03);
+    --deny-border: rgba(255, 255, 255, 0.10);
+    --deny-hover-bg: rgba(255, 255, 255, 0.12);
+    --deny-hover-border: rgba(255, 255, 255, 0.18);
+    --sug-bg: rgba(255, 255, 255, 0.045);
     --sug-color: #a1a1aa;
-    --sug-border: rgba(255, 255, 255, 0.06);
-    --sug-hover-bg: rgba(255, 255, 255, 0.08);
-    --sug-hover-border: rgba(255, 255, 255, 0.15);
-    --sug-hover-color: #e4e4e7;
+    --sug-border: rgba(255, 255, 255, 0.08);
+    --sug-hover-bg: rgba(255, 255, 255, 0.09);
+    --sug-hover-border: rgba(255, 255, 255, 0.16);
+    --sug-hover-color: #f4f4f5;
     --sug-arrow: #d4d4d8;
-    --irreversible-color: #ffca5f;
-    --irreversible-bg: rgba(255, 176, 32, 0.16);
-    --irreversible-border: rgba(255, 176, 32, 0.5);
+    --irreversible-color: #fcd34d;
+    --irreversible-bg: rgba(245, 158, 11, 0.16);
+    --irreversible-border: rgba(245, 158, 11, 0.38);
   }
 }
 
@@ -69,7 +77,7 @@ html, body {
   background: transparent;
   overflow: hidden;
   user-select: none;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Segoe UI", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 body { padding: 6px; }
@@ -77,29 +85,26 @@ body { padding: 6px; }
 .card {
   position: relative;
   background: var(--card-bg);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
   border: 1px solid var(--card-border);
-  border-radius: 16px;
-  padding: 16px 20px;
+  border-radius: 14px;
+  padding: 14px 16px;
   display: flex;
   flex-direction: column;
   gap: 8px;
   box-shadow: var(--card-shadow), var(--card-inset, none);
   color: var(--text-primary);
   opacity: 0;
-  transform: translateX(60px);
-  transition: opacity 0.35s var(--ease-spring), transform 0.4s var(--ease-spring);
+  transform: translateX(36px) scale(0.98);
+  transition: opacity 0.24s var(--ease-spring), transform 0.28s var(--ease-spring);
   overflow: hidden;
 }
 .card.expanded {
-  /* Root CSS zoom leaves vh tied to the unzoomed BrowserWindow. Divide by the
-     injected text scale so the painted card still fits the actual window. */
   height: calc(100vh / var(--clawd-text-zoom, 1) - 12px);
   min-height: 0;
 }
-.card.measuring {
-  height: auto;
-  max-height: none;
-}
+.card.measuring,
 .card.expanded.measuring {
   height: auto;
   max-height: none;
@@ -114,18 +119,18 @@ body { padding: 6px; }
 
 .card.visible {
   opacity: 1;
-  transform: translateX(0);
+  transform: translateX(0) scale(1);
 }
 .card.hiding {
   opacity: 0;
-  transform: translateX(60px);
+  transform: translateX(28px) scale(0.98);
 }
 .card.codex-user-input-focus-card { cursor: pointer; }
 .card.codex-user-input-focus-card:hover {
   border-color: var(--sug-hover-border);
 }
 .card.codex-user-input-focus-card:focus-visible {
-  outline: 2px solid var(--sug-hover-border);
+  outline: 2px solid var(--allow-bg);
   outline-offset: -2px;
 }
 
@@ -133,51 +138,51 @@ body { padding: 6px; }
 .header {
   display: flex;
   flex-direction: row;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 4px;
+  gap: 6px;
   width: 100%;
   min-width: 0;
-  margin-bottom: 0;
 }
 .header-copy {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
   min-width: 0;
 }
 .collapse-button {
   display: none;
   flex: 0 0 auto;
   min-width: 42px;
-  height: 26px;
-  margin: -4px -6px 0 8px;
+  height: 24px;
+  margin: -2px -4px 0 6px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 6px;
   color: var(--cmd-color);
   background: transparent;
   padding: 0 7px;
-  font: 600 11px/1 inherit;
+  font: 500 11px/1 inherit;
   cursor: pointer;
 }
 .collapse-button:hover { background: var(--sug-hover-bg); }
 .card.expanded .collapse-button { display: block; }
 .header-title {
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 600;
   color: var(--header-color);
-  letter-spacing: 0.02em;
+  letter-spacing: -0.01em;
   white-space: nowrap;
 }
 
-/* ── Irreversible-action hint (display-only badge) ── */
+/* ── Irreversible-action hint ── */
 .irreversible-badge {
-  margin: 2px 12px 0;
-  padding: 3px 8px;
-  border-radius: 6px;
+  margin: 2px 0 0;
+  padding: 4px 8px;
+  border-radius: 7px;
   font-size: 11px;
-  line-height: 1.3;
+  line-height: 1.35;
   color: var(--irreversible-color);
   background: var(--irreversible-bg);
   border: 1px solid var(--irreversible-border);
@@ -189,13 +194,13 @@ body { padding: 6px; }
   align-items: center;
   max-width: 100%;
   min-width: 0;
-  padding: 3px 8px;
-  border-radius: 6px;
-  font-size: 11px;
-  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 600;
   text-transform: uppercase;
   color: #fff;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
   background: #52525b;
   overflow: hidden;
   cursor: default;
@@ -218,25 +223,26 @@ body { padding: 6px; }
   from { transform: translateX(0); }
   to   { transform: translateX(var(--marquee-shift, 0)); }
 }
-.tool-pill[data-tool="Bash"]  { background: #d97757; }
-.tool-pill[data-tool="Edit"]  { background: #5b8dd9; }
-.tool-pill[data-tool="Write"] { background: #8b7ec7; }
-.tool-pill[data-tool="Read"]  { background: #5a9e6f; }
-.tool-pill[data-tool="Glob"]  { background: #5a9eab; }
-.tool-pill[data-tool="Grep"]  { background: #5a9eab; }
-.tool-pill[data-tool="Agent"] { background: #c47a9a; }
-.tool-pill[data-tool="Shell"] { background: #d97757; }
-.tool-pill[data-tool="CodexExec"] { background: #2563eb; }
-.tool-pill[data-tool="KimiPermission"] { background: #3b82f6; }
+.tool-pill[data-tool="Bash"]  { background: #3b4252; }
+.tool-pill[data-tool="Edit"]  { background: #2563eb; }
+.tool-pill[data-tool="Write"] { background: #4f46e5; }
+.tool-pill[data-tool="Read"]  { background: #0f766e; }
+.tool-pill[data-tool="Glob"]  { background: #0284c7; }
+.tool-pill[data-tool="Grep"]  { background: #0284c7; }
+.tool-pill[data-tool="Agent"] { background: #7c3aed; }
+.tool-pill[data-tool="Shell"] { background: #3b4252; }
+.tool-pill[data-tool="CodexExec"] { background: #0066cc; }
+.tool-pill[data-tool="KimiPermission"] { background: #2563eb; }
+.tool-pill[data-tool="KiroDesktopApproval"] { background: #6366f1; color: #fff; }
 
-/* ── Session tag (folder + short id, hidden when absent) ── */
+/* ── Session tag ── */
 .session-tag {
   display: none;
   font-size: 11px;
   color: var(--cmd-color);
-  opacity: 0.7;
-  font-family: "SF Mono", "ui-monospace", "Cascadia Code", "Fira Code", monospace;
-  letter-spacing: 0.02em;
+  opacity: 0.68;
+  font-family: "SF Mono", "ui-monospace", Menlo, Consolas, monospace;
+  letter-spacing: -0.01em;
   margin-top: -2px;
   white-space: nowrap;
   overflow: hidden;
@@ -247,27 +253,24 @@ body { padding: 6px; }
 /* ── Compact preview / expanded detail ── */
 .compact-block {
   display: -webkit-box;
-  padding: 10px 12px;
+  padding: 9px 11px;
   background: var(--cmd-bg);
   border: 1px solid var(--cmd-border);
-  border-radius: 10px;
-  font-family: "SF Mono", "ui-monospace", "Cascadia Code", "Fira Code", monospace;
-  font-size: 12px;
+  border-radius: 9px;
+  font-family: "SF Mono", "ui-monospace", Menlo, Consolas, monospace;
+  font-size: 11.5px;
   color: var(--cmd-color);
-  line-height: 1.5;
+  line-height: 1.48;
   overflow: hidden;
   word-break: break-word;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
-  box-shadow: var(--cmd-shadow);
 }
 .card.expanded .compact-block { display: none !important; }
 
-/* #1326: read-only list of the choices Claude Desktop's end-of-turn box
-   offers. Plain muted text, never button-like: the answer is given in Claude. */
 .native-question-options {
   display: none;
-  margin-top: 6px;
+  margin-top: 4px;
   font-size: 11px;
   line-height: 1.4;
   color: var(--cmd-color);
@@ -288,18 +291,18 @@ body { padding: 6px; }
   padding-right: 2px;
 }
 .card.expanded .detail-scroll { display: flex; }
-.detail-scroll::-webkit-scrollbar { width: 6px; }
+.detail-scroll::-webkit-scrollbar { width: 5px; }
 .detail-scroll::-webkit-scrollbar-track { background: transparent; }
 .detail-scroll::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius: 3px; }
 .detail-scroll::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-hover); }
 
 .command-block {
-  padding: 12px;
+  padding: 10px 12px;
   background: var(--cmd-bg);
   border: 1px solid var(--cmd-border);
-  border-radius: 10px;
-  font-family: "SF Mono", "ui-monospace", "Cascadia Code", "Fira Code", monospace;
-  font-size: 12px;
+  border-radius: 9px;
+  font-family: "SF Mono", "ui-monospace", Menlo, Consolas, monospace;
+  font-size: 11.5px;
   color: var(--cmd-color);
   line-height: 1.5;
   max-height: none;
@@ -307,7 +310,6 @@ body { padding: 6px; }
   white-space: pre-wrap;
   word-break: normal;
   overflow-wrap: anywhere;
-  box-shadow: var(--cmd-shadow);
 }
 .detail-truncation {
   display: none;
@@ -320,16 +322,17 @@ body { padding: 6px; }
 .btn-expand {
   display: none;
   width: 100%;
-  padding: 7px 12px;
+  padding: 6px 12px;
   border-radius: 8px;
   border: 1px solid var(--sug-border);
   color: var(--sug-hover-color);
   background: var(--sug-bg);
   font-family: inherit;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 11.5px;
+  font-weight: 500;
   text-align: center;
   cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 .btn-expand.visible { display: block; }
 .btn-expand:hover { background: var(--sug-hover-bg); border-color: var(--sug-hover-border); }
@@ -338,8 +341,6 @@ body { padding: 6px; }
 /* ── Elicitation form ── */
 .elicitation-form {
   display: none;
-  /* The outer detail scroller owns overflow. Keep the form at its intrinsic
-     height so its children cannot paint through the following progress row. */
   flex: 0 0 auto;
   flex-direction: column;
   gap: 10px;
@@ -349,14 +350,11 @@ body { padding: 6px; }
   overflow-y: auto;
   padding-right: 2px;
 }
-.card.elicitation-scrollable .elicitation-form::-webkit-scrollbar { width: 6px; }
+.card.elicitation-scrollable .elicitation-form::-webkit-scrollbar { width: 5px; }
 .card.elicitation-scrollable .elicitation-form::-webkit-scrollbar-track { background: transparent; }
 .card.elicitation-scrollable .elicitation-form::-webkit-scrollbar-thumb {
   background: var(--scroll-thumb);
   border-radius: 3px;
-}
-.card.elicitation-scrollable .elicitation-form::-webkit-scrollbar-thumb:hover {
-  background: var(--scroll-thumb-hover);
 }
 .card.elicitation-scrollable .elicitation-progress.visible {
   padding-top: 8px;
@@ -369,17 +367,16 @@ body { padding: 6px; }
   color: var(--cmd-color);
   opacity: 0.8;
   text-align: center;
-  font-family: "SF Mono", "ui-monospace", "Cascadia Code", "Fira Code", monospace;
+  font-family: "SF Mono", "ui-monospace", Menlo, Consolas, monospace;
   padding: 4px 0;
 }
 .elicitation-progress.visible { display: block; }
 
 .question-card {
-  padding: 12px;
+  padding: 11px;
   background: var(--cmd-bg);
   border: 1px solid var(--cmd-border);
-  border-radius: 10px;
-  box-shadow: var(--cmd-shadow);
+  border-radius: 9px;
 }
 
 .question-summary {
@@ -402,8 +399,8 @@ body { padding: 6px; }
   border-color: var(--sug-hover-border);
 }
 .question-summary-title {
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 10.5px;
+  font-weight: 600;
   color: var(--cmd-color);
   letter-spacing: 0.03em;
   text-transform: uppercase;
@@ -418,8 +415,8 @@ body { padding: 6px; }
 }
 
 .question-header {
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 10.5px;
+  font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--cmd-color);
@@ -427,8 +424,8 @@ body { padding: 6px; }
 }
 
 .question-text {
-  margin-top: 6px;
-  font-size: 13px;
+  margin-top: 5px;
+  font-size: 12.5px;
   line-height: 1.45;
   color: var(--text-primary);
 }
@@ -444,36 +441,31 @@ body { padding: 6px; }
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin-top: 10px;
+  margin-top: 9px;
 }
 
 .option-item {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  padding: 8px 10px;
+  padding: 7px 10px;
   border-radius: 8px;
   border: 1px solid var(--cmd-border);
-  background: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.35);
   cursor: pointer;
 }
 
 @media (prefers-color-scheme: dark) {
   .option-item {
-    background: rgba(255, 255, 255, 0.03);
+    background: rgba(255, 255, 255, 0.035);
   }
 }
 
-/* Codex request_user_input preview — the options are a read-only echo of
-   what's on screen in Codex's own terminal, not a picker. Override the base
-   .option-item's pointer cursor so it doesn't look clickable. */
-.option-item-readonly {
-  cursor: default;
-}
+.option-item-readonly { cursor: default; }
 
 .option-item input {
   margin-top: 2px;
-  accent-color: #d97757;
+  accent-color: var(--allow-bg);
 }
 
 .option-item-copy {
@@ -520,17 +512,14 @@ body { padding: 6px; }
   min-height: 48px;
   max-height: 120px;
   outline: none;
-  box-sizing: border-box;
 }
 .option-item-textarea.visible { display: block; }
-.option-item-textarea:focus {
-  border-color: #d97757;
-}
+.option-item-textarea:focus { border-color: var(--allow-bg); }
 
 /* ── Action buttons ── */
 .actions {
   display: flex;
-  gap: 8px;
+  gap: 7px;
 }
 .footer-secondary {
   display: none;
@@ -539,28 +528,29 @@ body { padding: 6px; }
   gap: 6px;
 }
 .footer-secondary.visible { display: flex; }
+
 .btn {
   flex: 1;
-  padding: 7px 0;
+  height: 30px;
+  padding: 0 12px;
   border-radius: 8px;
   font-family: inherit;
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
   border: 1px solid transparent;
-  transition: all 0.2s var(--ease-spring);
+  transition: background 0.14s ease, border-color 0.14s ease, transform 0.1s ease;
   outline: none;
 }
-.btn:active:not(:disabled) { transform: scale(0.96); }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn:active:not(:disabled) { transform: scale(0.975); }
+.btn:disabled { opacity: 0.48; cursor: not-allowed; }
 
 .btn-allow {
-  background: #d97757;
-  color: #fff;
-  border: 1px solid transparent;
+  background: var(--allow-bg);
+  color: var(--allow-ink);
 }
 .btn-allow:hover:not(:disabled) {
-  background: #c4684a;
+  background: var(--allow-hover);
 }
 
 .btn-deny {
@@ -573,26 +563,26 @@ body { padding: 6px; }
   border-color: var(--deny-hover-border);
 }
 
-/* ── Suggestion buttons (dynamic) ── */
+/* ── Suggestion buttons ── */
 .suggestions {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
 }
 
 .btn-suggestion {
   display: block;
   width: 100%;
-  padding: 7px 12px;
+  padding: 6px 11px;
   background: var(--sug-bg);
   color: var(--sug-color);
   border: 1px solid var(--sug-border);
   border-radius: 8px;
   font-family: inherit;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s var(--ease-spring);
+  transition: all 0.15s ease;
   outline: none;
   text-align: left;
   white-space: nowrap;
@@ -603,24 +593,23 @@ body { padding: 6px; }
 .btn-suggestion::after {
   content: '→';
   position: absolute;
-  right: 14px;
+  right: 12px;
   opacity: 0;
-  transform: translateX(-4px);
-  transition: all 0.2s ease;
+  transform: translateX(-3px);
+  transition: all 0.16s ease;
   color: var(--sug-arrow);
 }
 .btn-suggestion:hover:not(:disabled) {
   background: var(--sug-hover-bg);
   border-color: var(--sug-hover-border);
   color: var(--sug-hover-color);
-  padding-right: 34px;
+  padding-right: 30px;
 }
 .btn-suggestion:hover:not(:disabled)::after {
   opacity: 1;
   transform: translateX(0);
 }
-
-.btn-suggestion:active:not(:disabled) { transform: scale(0.98); }
+.btn-suggestion:active:not(:disabled) { transform: scale(0.985); }
 .btn-suggestion:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .session-trust-error {
@@ -652,23 +641,15 @@ body { padding: 6px; }
   min-height: 48px;
   max-height: 120px;
   outline: none;
-  box-sizing: border-box;
 }
-.plan-feedback-textarea:focus {
-  border-color: #d97757;
-}
+.plan-feedback-textarea:focus { border-color: var(--allow-bg); }
 
 .plan-feedback-actions {
   display: flex;
-  gap: 8px;
+  gap: 7px;
 }
-.plan-feedback-actions .btn {
-  flex: 1;
-}
+.plan-feedback-actions .btn { flex: 1; }
 
-.tool-pill[data-tool="KiroDesktopApproval"] { background: #7056c9; color: #fff; }
-
-/* The bounded Kiro question and read-only instruction stay visible together. */
 .card.kiro-desktop-reminder .compact-block {
   display: block;
   white-space: pre-wrap;

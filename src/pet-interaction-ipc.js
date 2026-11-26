@@ -186,6 +186,22 @@ function registerPetInteractionIpc(options = {}) {
     });
   }
 
+  on("pet-interaction:show-dashboard", (event) => {
+    const contents = options.getHitWindow?.()?.webContents;
+    if (!contents || isTrustedMainFrameEvent(event, contents)) {
+      showDashboard();
+    }
+  });
+
+  if (typeof options.onPetHover === "function") {
+    on("pet-interaction:hover", (event, hovered) => {
+      const contents = options.getHitWindow?.()?.webContents;
+      if (!contents || isTrustedMainFrameEvent(event, contents)) {
+        options.onPetHover(!!hovered);
+      }
+    });
+  }
+
   if (options.enableLegacyFocus !== false) on("pet-interaction:reveal-session-hud", () => {
     revealSessionHud();
   });

@@ -79,6 +79,12 @@ function sameBounds(a, b) {
 
 module.exports = function initDashboard(ctx) {
   const platform = ctx.platform || process.platform;
+  const configuredDefaultWidth = Number.isFinite(ctx.defaultWidth) && ctx.defaultWidth >= MIN_WIDTH
+    ? Math.round(ctx.defaultWidth)
+    : DEFAULT_WIDTH;
+  const configuredDefaultHeight = Number.isFinite(ctx.defaultHeight) && ctx.defaultHeight >= MIN_HEIGHT
+    ? Math.round(ctx.defaultHeight)
+    : DEFAULT_HEIGHT;
   let dashboardWindow = null;
   // Host wrapper for the single Dashboard page: BaseWindow + WebContentsView
   // on darwin/win32, plain BrowserWindow on Linux.
@@ -291,8 +297,8 @@ module.exports = function initDashboard(ctx) {
   function getScaledMetrics(bounds = null) {
     const scale = getTextScale(bounds);
     return {
-      defaultWidth: scaleWidth(DEFAULT_WIDTH, scale),
-      defaultHeight: scaleHeight(DEFAULT_HEIGHT, scale),
+      defaultWidth: scaleWidth(configuredDefaultWidth, scale),
+      defaultHeight: scaleHeight(configuredDefaultHeight, scale),
       minWidth: scaleWidth(MIN_WIDTH, scale),
       minHeight: scaleHeight(MIN_HEIGHT, scale),
     };

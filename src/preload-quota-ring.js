@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld("quotaRingAPI", {
   // Clicking a coin opens the Dashboard, which owns the
   // full per-source detail. Reuses the HUD's existing channel/handler.
   openDashboard: () => ipcRenderer.send("session-hud:open-dashboard"),
+  notifyHover: (hovered) => ipcRenderer.send("quota-ring:hover", !!hovered),
   onSnapshot: (cb) => {
     if (typeof cb !== "function") return () => {};
     snapshotListeners.add(cb);

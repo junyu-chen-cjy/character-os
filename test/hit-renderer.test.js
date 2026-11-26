@@ -62,7 +62,9 @@ function createHarness({ isMac = false, sendState = {} } = {}) {
         focusTerminal: () => apiCalls.push(["focusTerminal"]),
         exitMiniMode: () => apiCalls.push(["exitMiniMode"]),
         showDashboard: () => apiCalls.push(["showDashboard"]),
+        openChat: () => apiCalls.push(["openChat"]),
         revealSessionHud: () => apiCalls.push(["revealSessionHud"]),
+        setHovering: (v) => apiCalls.push(["setHovering", v]),
         startDragReaction: (direction) => apiCalls.push(["startDragReaction", direction]),
         endDragReaction: () => apiCalls.push(["endDragReaction"]),
         playClickReaction: (svg, d) => apiCalls.push(["playClickReaction", svg, d]),
@@ -124,64 +126,86 @@ function createHarness({ isMac = false, sendState = {} } = {}) {
 }
 
 describe("hit-renderer input layer", () => {
-  it("plain single click reveals HUD, does NOT call focusTerminal", () => {
+  it("plain single click opens Command window (openChat), does NOT call focusTerminal", () => {
     const h = createHarness();
     h.pointerup({});
     const names = h.apiCalls.map((c) => c[0]);
-    assert.ok(names.includes("revealSessionHud"), "should call revealSessionHud");
+    assert.ok(names.includes("openChat"), "should call openChat");
     assert.ok(!names.includes("focusTerminal"), "must not call focusTerminal");
   });
 
-  it("Ctrl+click on non-mac opens Dashboard, does NOT call reveal", () => {
+  it("Ctrl+click on non-mac opens Workspace (showDashboard), does NOT call openChat", () => {
     const h = createHarness({ isMac: false });
     h.pointerup({ ctrlKey: true });
     const names = h.apiCalls.map((c) => c[0]);
-    assert.ok(names.includes("showDashboard"), "should open Dashboard");
-    assert.ok(!names.includes("revealSessionHud"), "must not reveal HUD on Ctrl+click");
+    assert.ok(names.includes("showDashboard"), "should open Workspace");
+    assert.ok(!names.includes("openChat"), "must not open Command window on Ctrl+click");
   });
 
-  it("Cmd+click on mac opens Dashboard", () => {
+  it("Cmd+click on mac opens Workspace (showDashboard)", () => {
     const h = createHarness({ isMac: true });
     h.pointerup({ metaKey: true });
     const names = h.apiCalls.map((c) => c[0]);
     assert.ok(names.includes("showDashboard"));
-    assert.ok(!names.includes("revealSessionHud"));
+    assert.ok(!names.includes("openChat"));
   });
 
-  it("Ctrl+click on mac does NOT open Dashboard and does NOT reveal (system right-click)", () => {
+  it("Ctrl+click on mac does NOT open Workspace and does NOT open Command window (system right-click)", () => {
     const h = createHarness({ isMac: true });
     h.pointerup({ ctrlKey: true });
     const names = h.apiCalls.map((c) => c[0]);
-    assert.ok(!names.includes("showDashboard"), "mac Ctrl+click must not trigger Dashboard");
-    assert.ok(!names.includes("revealSessionHud"), "mac Ctrl+click must not reveal HUD");
+    assert.ok(!names.includes("showDashboard"), "mac Ctrl+click must not trigger Workspace");
+    assert.ok(!names.includes("openChat"), "mac Ctrl+click must not open Command window");
   });
 
-  it("miniMode + plain click calls exitMiniMode (not reveal)", () => {
+  it("miniMode + plain click calls exitMiniMode (not openChat)", () => {
     const h = createHarness();
     h.apiHandlers.stateSync({ miniMode: true });
     h.pointerup({});
     const names = h.apiCalls.map((c) => c[0]);
     assert.ok(names.includes("exitMiniMode"), "miniMode plain click should exit mini");
-    assert.ok(!names.includes("revealSessionHud"), "miniMode plain click should not reveal HUD");
+    assert.ok(!names.includes("openChat"), "miniMode plain click should not open Command window");
   });
 
-  it("miniMode + Ctrl+click goes to Dashboard, does NOT exit mini (preserves pre-v5 behavior)", () => {
+  it("miniMode + Ctrl+click goes to Workspace, does NOT exit mini", () => {
     const h = createHarness({ isMac: false });
     h.apiHandlers.stateSync({ miniMode: true });
     h.pointerup({ ctrlKey: true });
     const names = h.apiCalls.map((c) => c[0]);
-    assert.ok(names.includes("showDashboard"), "Ctrl+click in mini should still open Dashboard");
+    assert.ok(names.includes("showDashboard"), "Ctrl+click in mini should still open Workspace");
     assert.ok(!names.includes("exitMiniMode"), "Ctrl+click in mini must NOT exit mini");
   });
 
-  it("does not trigger reveal in working state but still reveals HUD on click (gating is for reactions only)", () => {
+  it("opens Command window on click even in working state (gating is for reactions only)", () => {
     const h = createHarness();
     h.apiHandlers.stateSync({ currentState: "working" });
     h.pointerup({});
     const names = h.apiCalls.map((c) => c[0]);
-    // v5 change: reveal HUD even in non-idle states (so user can peek progress)
-    assert.ok(names.includes("revealSessionHud"));
+    assert.ok(names.includes("openChat"));
     assert.ok(!names.includes("focusTerminal"));
+  });
+
+  it("reports hover enter/leave and suppresses hover + click when dragging", () => {
+    const h = createHarness();
+    h.area.listeners.get("pointerenter")();
+    assert.deepStrictEqual(
+      h.apiCalls.filter((c) => c[0] === "setHovering"),
+      [["setHovering", true]]
+    );
+
+    h.pointerdown({ clientX: 100, clientY: 100 });
+    h.pointermove({ clientX: 112, clientY: 104, buttons: 1 });
+    h.pointerup({ clientX: 112 });
+
+    assert.deepStrictEqual(
+      h.apiCalls.filter((c) => c[0] === "setHovering"),
+      [["setHovering", true], ["setHovering", false]],
+      "dragging past threshold must dismiss hover"
+    );
+    assert.ok(
+      !h.apiCalls.some((c) => c[0] === "openChat"),
+      "dragging past threshold must not misfire left-click Command window"
+    );
   });
 
   it("DND + double click does NOT play reaction (canPlayReactionNow fresh-read)", () => {

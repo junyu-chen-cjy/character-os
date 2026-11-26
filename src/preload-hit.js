@@ -52,6 +52,8 @@ contextBridge.exposeInMainWorld("hitAPI", {
   onDropAccepted: (cb) => ipcRenderer.on("pet-drop-accepted", () => cb()),
   exitMiniMode: () => ipcRenderer.send("exit-mini-mode"),
   openChat: () => ipcRenderer.send("pet-interaction:open-chat"),
+  showDashboard: () => ipcRenderer.send("pet-interaction:show-dashboard"),
+  setHovering: (hovered) => ipcRenderer.send("pet-interaction:hover", !!hovered),
   // Reaction triggers → main → renderWin
   startDragReaction: (direction) => ipcRenderer.send("start-drag-reaction", direction),
   endDragReaction: () => ipcRenderer.send("end-drag-reaction"),

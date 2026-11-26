@@ -58,6 +58,30 @@ const ICONS = {
     '<path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/>' +
     '</svg>',
 
+  // model cube / nodes
+  models:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="100%" height="100%">' +
+    '<path d="M12 2 3.5 6.75v10.5L12 22l8.5-4.75V6.75L12 2Z"/>' +
+    '<path d="M3.5 6.75 12 11.5l8.5-4.75"/>' +
+    '<path d="M12 11.5V22"/>' +
+    '</svg>',
+
+  // local storage / folder
+  data:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="100%" height="100%">' +
+    '<path d="M3 6.5A2.5 2.5 0 0 1 5.5 4h3.9a2 2 0 0 1 1.6.8l1.2 1.6a1 1 0 0 0 .8.4h5.5A2.5 2.5 0 0 1 21 9.3v8.2a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-11Z"/>' +
+    '<path d="M8 13.5h8"/>' +
+    '</svg>',
+
+  // character presence / companion frame
+  character:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="100%" height="100%">' +
+    '<rect x="3.5" y="3.5" width="17" height="17" rx="4.5"/>' +
+    '<circle cx="9.25" cy="10.75" r="1" fill="currentColor"/>' +
+    '<circle cx="14.75" cy="10.75" r="1" fill="currentColor"/>' +
+    '<path d="M9.5 15c.75.65 1.6.95 2.5.95s1.75-.3 2.5-.95"/>' +
+    '</svg>',
+
   // palette
   theme:
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="100%" height="100%">' +

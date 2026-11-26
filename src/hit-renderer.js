@@ -40,7 +40,17 @@ let mouseDownX, mouseDownY;
 let lastDragClientX;
 let dragReactionDirection = null;
 let dragMoveRAF = null;
-const DRAG_THRESHOLD = 3;
+const DRAG_THRESHOLD = 4;
+let isHoveringPet = false;
+
+function reportHover(next) {
+  const flag = !!next;
+  if (isHoveringPet === flag) return;
+  isHoveringPet = flag;
+  if (window.hitAPI && typeof window.hitAPI.setHovering === "function") {
+    window.hitAPI.setHovering(flag);
+  }
+}
 
 // --- Reaction state (tracked here to gate input) ---
 let isReacting = false;
@@ -69,6 +79,14 @@ function clearQueuedDragMove() {
 }
 
 // --- Pointer handlers ---
+area.addEventListener("pointerenter", () => {
+  if (!isDragging && !miniMode) reportHover(true);
+});
+
+area.addEventListener("pointerleave", () => {
+  if (!isDragging) reportHover(false);
+});
+
 area.addEventListener("pointerdown", (e) => {
   if (e.button === 0) {
     if (miniMode) { didDrag = false; return; }
@@ -85,6 +103,9 @@ area.addEventListener("pointerdown", (e) => {
 });
 
 document.addEventListener("pointermove", (e) => {
+  if (!isDragging && !miniMode) {
+    reportHover(true);
+  }
   if (isDragging) {
     // A swallowed pointerup (UAC secure desktop, RDP reconnect, fullscreen
     // transition) leaves isDragging and the main-process drag lock stranded
@@ -102,6 +123,7 @@ document.addEventListener("pointermove", (e) => {
       const totalDy = e.clientY - mouseDownY;
       if (Math.abs(totalDx) > DRAG_THRESHOLD || Math.abs(totalDy) > DRAG_THRESHOLD) {
         didDrag = true;
+        reportHover(false);
         startDragReaction(totalDx < 0 ? "left" : (totalDx > 0 ? "right" : null));
       }
     } else {
@@ -137,8 +159,18 @@ document.addEventListener("pointerup", (e) => {
 
   // macOS Ctrl-click belongs to the native context-menu gesture.
   if (isMac && e.ctrlKey && !e.metaKey) return;
-  if (miniMode) window.hitAPI.exitMiniMode();
-  window.hitAPI.openChat();
+  const modClick = isMac ? !!e.metaKey : !!e.ctrlKey;
+  if (modClick && window.hitAPI && typeof window.hitAPI.showDashboard === "function") {
+    window.hitAPI.showDashboard();
+    return;
+  }
+  if (miniMode) {
+    window.hitAPI.exitMiniMode();
+    return;
+  }
+  if (window.hitAPI && typeof window.hitAPI.openChat === "function") {
+    window.hitAPI.openChat();
+  }
 });
 
 area.addEventListener("pointercancel", () => stopDrag());
@@ -263,5 +295,6 @@ if (!isMac) {
 document.addEventListener("contextmenu", (e) => {
   e.preventDefault();
   if (isDragging) stopDrag();
+  reportHover(false);
   window.hitAPI.showContextMenu();
 });

@@ -4,74 +4,96 @@
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Character OS Chat</title>
+  <title>Character OS Command</title>
   <link rel="stylesheet" href="./chat.css">
   <script src="./chat-renderer.js" defer></script>
 </head>
 <body>
-  <aside class="sidebar">
-    <div class="sidebar-heading">
-      <span class="brand">Character OS</span>
-      <button type="button" id="new-chat" class="new-chat">
-        <span aria-hidden="true">+</span> New chat
-      </button>
-    </div>
-    <nav id="sessions" class="sessions" aria-label="Chat history"></nav>
-  </aside>
-  <main class="conversation">
+  <div class="shell">
     <header class="topbar">
-      <h1 id="title">Chat</h1>
-      <button type="button" id="model-settings" class="model-button">Model settings</button>
+      <div class="topbar-left">
+        <button type="button" id="toggle-history" class="icon-btn" aria-expanded="false" aria-controls="history-drawer" title="Conversation history">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+            <path d="M3 3v5h5"></path>
+            <path d="M12 7v5l3.5 2"></path>
+          </svg>
+        </button>
+        <button type="button" id="new-chat" class="ghost-btn" title="New conversation (⌘N)">
+          <span aria-hidden="true">+</span> New
+        </button>
+        <h1 id="title">Command</h1>
+      </div>
+
+      <button type="button" id="model-settings" class="model-pill">
+        <span id="model-dot" class="model-dot"></span>
+        <span id="model-label">Connect model</span>
+      </button>
     </header>
+
+    <aside id="history-drawer" class="history-drawer" hidden>
+      <div class="drawer-head">
+        <span>Recent threads</span>
+      </div>
+      <nav id="sessions" class="sessions" aria-label="Chat history"></nav>
+    </aside>
 
     <div class="viewport" id="viewport">
       <div class="transcript" id="transcript" aria-label="Messages"></div>
       <section id="empty" class="empty" hidden>
-        <h2>What’s on your mind?</h2>
-        <p id="setup-message">Choose a model to start chatting.</p>
+        <div class="empty-badge">Character OS · Quick Command</div>
+        <h2>Ask or draft anything</h2>
+        <p id="scope-caption" class="scope-caption">Lightweight direct model conversation. Configure an OpenAI-compatible API endpoint to begin.</p>
+        <p id="setup-message" class="setup-note">No model endpoint configured yet.</p>
         <button type="button" id="configure" class="secondary">Configure model</button>
       </section>
     </div>
 
     <form id="composer" class="composer">
       <div class="compose-box">
-        <textarea id="message" rows="2" maxlength="32000" aria-label="Message" placeholder="Message your model…"></textarea>
+        <textarea id="message" rows="1" maxlength="32000" aria-label="Command or question" placeholder="Ask a quick question or draft a prompt…"></textarea>
         <div class="compose-actions">
           <span id="chat-status" role="status"></span>
-          <button type="button" id="stop" class="secondary" hidden>Stop</button>
-          <button type="submit" id="send" class="primary" disabled>Send</button>
+          <span class="kbd-hint" aria-hidden="true">↵ Send · ⇧↵ Line</span>
+          <button type="button" id="stop" class="stop-btn" hidden>Stop</button>
+          <button type="submit" id="send" class="send-btn" disabled aria-label="Send">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 19V5"></path>
+              <path d="m5 12 7-7 7 7"></path>
+            </svg>
+          </button>
         </div>
       </div>
       <p class="error" id="chat-error" role="alert" hidden></p>
     </form>
-  </main>
+  </div>
 
   <dialog id="settings">
     <form id="model-form">
       <header class="settings-heading">
-        <h2>Model settings</h2>
-        <p>Connect to an OpenAI-compatible chat endpoint.</p>
+        <h2>Model Endpoint</h2>
+        <p>Connect an OpenAI-compatible chat completions endpoint.</p>
       </header>
       <label>Base URL
-        <input id="base-url" type="url" placeholder="https://provider.example/v1" maxlength="2048" required>
+        <input id="base-url" type="url" placeholder="https://api.openai.com/v1" maxlength="2048" required>
       </label>
       <label>Model ID
-        <input id="model-id" placeholder="your-model-id" maxlength="512" required>
+        <input id="model-id" placeholder="gpt-4.1-mini" maxlength="512" required>
       </label>
-      <label>API key
-        <input id="api-key" type="password" placeholder="Optional for endpoints without authentication" maxlength="4096" autocomplete="off">
+      <label>API Key
+        <input id="api-key" type="password" placeholder="Optional for local unauthenticated endpoints" maxlength="4096" autocomplete="off">
       </label>
-      <p class="hint" id="key-hint">Keys are encrypted using your system’s secure storage.</p>
+      <p class="hint" id="key-hint">Keys are encrypted locally with your system secure storage.</p>
       <label class="toggle" id="clear-key-row" hidden>
         <input id="clear-key" type="checkbox"> Remove saved key
       </label>
-      <label>System prompt
-        <textarea id="system-prompt" rows="3" placeholder="Optional instructions for the model" maxlength="16000"></textarea>
+      <label>System Prompt
+        <textarea id="system-prompt" rows="3" placeholder="Optional instructions for this command window" maxlength="16000"></textarea>
       </label>
       <p class="error" id="settings-error" role="alert" hidden></p>
       <footer class="settings-actions">
         <button type="button" id="cancel-settings" class="secondary">Cancel</button>
-        <button type="submit" id="save-model" class="primary">Save settings</button>
+        <button type="submit" id="save-model" class="primary">Save</button>
       </footer>
     </form>
   </dialog>

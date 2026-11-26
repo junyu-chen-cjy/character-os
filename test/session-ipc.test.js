@@ -557,11 +557,12 @@ test("dashboard renderer wires the Mark-read button + ackCompletion fallback (so
   }
 });
 
-test("Workbench ships without the quota view or refresh bridge", () => {
+test("Workspace keeps real account quota mount and workspace context bridges", () => {
   const preload = fs.readFileSync(path.join(__dirname, "..", "src", "preload-dashboard.js"), "utf8");
   const html = fs.readFileSync(path.join(__dirname, "..", "src", "dashboard.html"), "utf8");
-  assert.doesNotMatch(preload, /dashboard:(get-kimi-quota-status|refresh-kimi-quota)/);
-  assert.doesNotMatch(html, /id="quotaSummary"/);
+  assert.match(preload, /dashboard:get-workspace-context/);
+  assert.match(preload, /dashboard:workspace-action/);
+  assert.match(html, /id="quotaSummary"/);
 });
 
 test("main forwards dashboard open source options into session IPC", () => {

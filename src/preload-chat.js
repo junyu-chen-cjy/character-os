@@ -12,4 +12,5 @@ contextBridge.exposeInMainWorld("chat", {
   openLink: url => ipcRenderer.invoke("chat:open-link", url),
   onChanged: listener => ipcRenderer.on("chat:changed", (_event, state) => listener(state)),
   onOpenModelSettings: listener => ipcRenderer.on("chat:open-model-settings", () => listener()),
+  onFocusInput: listener => ipcRenderer.on("chat:focus-input", () => listener()),
 });
