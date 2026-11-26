@@ -736,6 +736,8 @@
     ops = core.ops;
     i18n = core.i18n;
     core.tabs.pet = {
+      buildSizeSliderRow,
+      buildPetAlwaysOnTopRow,
       render,
       patchInPlace,
     };

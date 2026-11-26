@@ -222,29 +222,6 @@ describe("pet color menu placement", () => {
   });
 });
 
-describe("macOS visibility toggles live in the tray, not the right-click menu", () => {
-  it("drops Show in Dock / Show in Menu Bar from the context menu but keeps them in the tray", (t) => {
-    if (process.platform !== "darwin") {
-      t.skip("Dock / Menu Bar toggles are macOS-only");
-      return;
-    }
-    const initMenu = loadMenuWithElectron(fakeElectron());
-    let trayTemplate = null;
-    const ctx = buildBaseCtx({
-      tray: { setContextMenu(menuObj) { trayTemplate = menuObj.template; } },
-    });
-    const menu = initMenu(ctx);
-    menu.buildContextMenu();
-    menu.buildTrayMenu();
-    const ctxLabels = ctx.contextMenu.template.map((item) => item.label);
-    const trayLabels = trayTemplate.map((item) => item.label);
-    assert.ok(!ctxLabels.includes("Show in Dock"), "context menu drops Show in Dock");
-    assert.ok(!ctxLabels.includes("Show in Menu Bar"), "context menu drops Show in Menu Bar");
-    assert.ok(trayLabels.includes("Show in Dock"), "tray keeps Show in Dock");
-    assert.ok(trayLabels.includes("Show in Menu Bar"), "tray keeps Show in Menu Bar");
-  });
-});
-
 describe("macOS runtime Dock visibility", () => {
   it("installs the padded Clawd icon before showing Dock after a tray-only launch", async () => {
     const calls = [];

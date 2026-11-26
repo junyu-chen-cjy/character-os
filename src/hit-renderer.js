@@ -48,7 +48,6 @@ let isDragReacting = false;
 
 // Cancel signal from main (e.g. state change)
 window.hitAPI.onCancelReaction(() => {
-  if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; clickCount = 0; firstClickDir = null; }
   isReacting = false;
   isDragReacting = false;
   dragReactionDirection = null;
@@ -136,24 +135,10 @@ document.addEventListener("pointerup", (e) => {
   stopDrag();
   if (wasDrag) return;
 
-  // macOS Ctrl-click is the system right-click gesture. Let the OS / our
-  // contextmenu handler deal with it; do NOT treat it as the Dashboard
-  // shortcut, and do NOT fall through to handleClick (would otherwise
-  // leak into the click accumulator).
-  if (isMac && e.ctrlKey && !e.metaKey) {
-    resetClickAccumulator();
-    return;
-  }
-
-  // Dashboard shortcut: Cmd-click on mac, Ctrl-click elsewhere.
-  const isDashboardShortcut = isMac ? e.metaKey : (e.ctrlKey && !e.metaKey);
-  if (isDashboardShortcut) {
-    resetClickAccumulator();
-    window.hitAPI.showDashboard();
-    return;
-  }
-
-  handleClick(e.clientX);
+  // macOS Ctrl-click belongs to the native context-menu gesture.
+  if (isMac && e.ctrlKey && !e.metaKey) return;
+  if (miniMode) window.hitAPI.exitMiniMode();
+  window.hitAPI.openChat();
 });
 
 area.addEventListener("pointercancel", () => stopDrag());
@@ -168,79 +153,13 @@ window.hitAPI.onForceDragRelease(() => {
   if (isDragging) stopDrag();
 });
 
-// --- Click reaction logic (2-click = poke, 4-click = flail) ---
-const CLICK_WINDOW_MS = 400;
-
-let clickCount = 0;
-let clickTimer = null;
-let firstClickDir = null;
-
+// Reaction helpers shared by drag and the built-in renderer test events.
 function _getReaction(name) {
   return _reactions[name] || null;
 }
 
-function resetClickAccumulator() {
-  if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
-  clickCount = 0;
-  firstClickDir = null;
-}
-
-// Fresh-read at reaction timer fire time, NOT closured at click time —
-// state / DND may change inside the 400 ms accumulator window.
 function canPlayReactionNow() {
   return currentState === "idle" && !dndEnabled && !isReacting;
-}
-
-function handleClick(clientX) {
-  if (miniMode) {
-    window.hitAPI.exitMiniMode();
-    return;
-  }
-  if (isDragReacting) return;
-
-  clickCount++;
-  if (clickCount === 1) {
-    firstClickDir = clientX < area.offsetWidth / 2 ? "left" : "right";
-    // First click reveals the session HUD. Lightweight side effect — NOT
-    // gated by isReacting (HUD reveal is independent of pet animation).
-    window.hitAPI.revealSessionHud();
-  }
-
-  if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
-
-  const doubleReact = _getReaction("double");
-  const annoyedReact = _getReaction("annoyed");
-  const leftReact = _getReaction("clickLeft");
-  const rightReact = _getReaction("clickRight");
-
-  if (clickCount >= 4 && doubleReact) {
-    clickCount = 0;
-    firstClickDir = null;
-    if (!canPlayReactionNow()) return;
-    const files = doubleReact.files || [doubleReact.file];
-    const file = files[Math.floor(Math.random() * files.length)];
-    playReaction(file, doubleReact.duration || 3500);
-  } else if (clickCount >= 2) {
-    clickTimer = setTimeout(() => {
-      clickTimer = null;
-      clickCount = 0;
-      const dir = firstClickDir;
-      firstClickDir = null;
-      if (!canPlayReactionNow()) return;
-      if (annoyedReact && Math.random() < 0.5) {
-        playReaction(annoyedReact.file, annoyedReact.duration || 3500);
-      } else if (leftReact && rightReact) {
-        const react = dir === "left" ? leftReact : rightReact;
-        playReaction(react.file, react.duration || 2500);
-      }
-    }, CLICK_WINDOW_MS);
-  } else {
-    clickTimer = setTimeout(() => {
-      clickTimer = null;
-      clickCount = 0;
-      firstClickDir = null;
-    }, CLICK_WINDOW_MS);
-  }
 }
 
 function playReaction(svg, duration) {

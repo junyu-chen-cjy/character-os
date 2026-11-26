@@ -557,30 +557,11 @@ test("dashboard renderer wires the Mark-read button + ackCompletion fallback (so
   }
 });
 
-test("Dashboard exposes the trusted Kimi quota refresh bridge and localized action", () => {
-  const rendererSrc = fs.readFileSync(path.join(__dirname, "..", "src", "dashboard-renderer.js"), "utf8");
-  const preloadSrc = fs.readFileSync(path.join(__dirname, "..", "src", "preload-dashboard.js"), "utf8");
-  const htmlSrc = fs.readFileSync(path.join(__dirname, "..", "src", "dashboard.html"), "utf8");
-  const i18nSrc = fs.readFileSync(path.join(__dirname, "..", "src", "i18n.js"), "utf8");
-
-  // The refresh button is built by the renderer inside the Kimi quota
-  // section header, not static markup in dashboard.html.
-  assert.match(rendererSrc, /quota-refresh-button/);
-  assert.match(htmlSrc, /\.quota-refresh-button\s*\{/);
-  assert.match(preloadSrc, /dashboard:get-kimi-quota-status/);
-  assert.match(preloadSrc, /dashboard:refresh-kimi-quota/);
-  assert.match(rendererSrc, /refreshKimiQuotaFromDashboard/);
-  for (const key of [
-    "dashboardKimiQuotaRefresh",
-    "dashboardKimiQuotaRefreshing",
-    "dashboardKimiQuotaUpdated",
-    "dashboardKimiQuotaRefreshFailed",
-    "dashboardKimiQuotaEmpty",
-    "dashboardKimiQuotaRefreshShort",
-  ]) {
-    const matches = i18nSrc.match(new RegExp(`\\b${key}:`, "g"));
-    assert.strictEqual(matches ? matches.length : 0, SUPPORTED_LANGS.length);
-  }
+test("Workbench ships without the quota view or refresh bridge", () => {
+  const preload = fs.readFileSync(path.join(__dirname, "..", "src", "preload-dashboard.js"), "utf8");
+  const html = fs.readFileSync(path.join(__dirname, "..", "src", "dashboard.html"), "utf8");
+  assert.doesNotMatch(preload, /dashboard:(get-kimi-quota-status|refresh-kimi-quota)/);
+  assert.doesNotMatch(html, /id="quotaSummary"/);
 });
 
 test("main forwards dashboard open source options into session IPC", () => {

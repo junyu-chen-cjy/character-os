@@ -7,7 +7,6 @@ on:
       - 'distribution/apt/**'
       - 'scripts/apt/**'
       - 'test/*apt*'
-      - 'src/updater.js'
       - 'src/update-install-format.js'
   workflow_dispatch:
 
@@ -64,7 +63,7 @@ jobs:
         with:
           node-version-file: .nvmrc
       - run: npm ci
-      - run: node --test test/updater.test.js test/update-install-format.test.js test/verify-updater-metadata.test.js
+      - run: node --test test/update-install-format.test.js test/verify-updater-metadata.test.js
       - run: npx electron-builder --linux --publish never
       - name: Assert final Linux package identities
         run: python3 scripts/apt/verify-package-formats.py --dist dist

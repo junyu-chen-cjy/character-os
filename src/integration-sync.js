@@ -864,7 +864,7 @@ function createIntegrationSyncRuntime(options = {}) {
   function syncEnabledStartupIntegrations() {
     // Fire-and-forget: the sync loop must not wait on a PowerShell read. The
     // platform gate is here so non-Windows hosts never start one.
-    if (platform === "win32") {
+    if (platform === "win32" && shouldSyncAgentIntegration("deepseek-harness")) {
       Promise.resolve()
         .then(() => preheatDshDesktopDiscovery())
         .catch((err) => console.warn(

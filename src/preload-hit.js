@@ -41,7 +41,6 @@ contextBridge.exposeInMainWorld("hitAPI", {
   dragMove: () => ipcRenderer.send("drag-move"),
   dragEnd: () => ipcRenderer.send("drag-end"),
   showContextMenu: () => ipcRenderer.send("show-context-menu"),
-  focusTerminal: () => ipcRenderer.send("focus-terminal"),
   // OS file drop (#459). File → absolute path must resolve here in the
   // preload: Electron ≥32 removed File.path from the renderer, and
   // webUtils.getPathForFile only accepts a File passed across the bridge.
@@ -52,8 +51,7 @@ contextBridge.exposeInMainWorld("hitAPI", {
   dropPaths: (paths) => ipcRenderer.send("pet-drop-paths", paths),
   onDropAccepted: (cb) => ipcRenderer.on("pet-drop-accepted", () => cb()),
   exitMiniMode: () => ipcRenderer.send("exit-mini-mode"),
-  showDashboard: () => ipcRenderer.send("show-dashboard"),
-  revealSessionHud: () => ipcRenderer.send("pet-interaction:reveal-session-hud"),
+  openChat: () => ipcRenderer.send("pet-interaction:open-chat"),
   // Reaction triggers → main → renderWin
   startDragReaction: (direction) => ipcRenderer.send("start-drag-reaction", direction),
   endDragReaction: () => ipcRenderer.send("end-drag-reaction"),

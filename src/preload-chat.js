@@ -11,4 +11,5 @@ contextBridge.exposeInMainWorld("chat", {
   saveModel: model => ipcRenderer.invoke("chat:save-model", model),
   openLink: url => ipcRenderer.invoke("chat:open-link", url),
   onChanged: listener => ipcRenderer.on("chat:changed", (_event, state) => listener(state)),
+  onOpenModelSettings: listener => ipcRenderer.on("chat:open-model-settings", () => listener()),
 });

@@ -102,20 +102,7 @@ function createSettingsWindowRuntime(options = {}) {
   let pendingRequestedTab = null;
   let settingsRendererLoaded = false;
 
-  const ALLOWED_TABS = new Set([
-    "general",
-    "pet",
-    "notifications",
-    "sessions",
-    "permissions",
-    "agents",
-    "theme",
-    "animOverrides",
-    "shortcuts",
-    "discord-presence",
-    "remote-ssh",
-    "about",
-  ]);
+  const ALLOWED_TABS = new Set(["general", "models", "agents", "data", "character"]);
 
   function normalizeRequestedTab(value) {
     return typeof value === "string" && ALLOWED_TABS.has(value) ? value : null;

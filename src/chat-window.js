@@ -29,6 +29,7 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
   let active;
   let notice = "";
   let revision = 0;
+  let modelSettingsRequested = false;
   const rendered = new WeakMap();
 
   function dataPath(name) {
@@ -274,6 +275,7 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.webContents.on("will-navigate", event => event.preventDefault());
     window.once("ready-to-show", () => window.show());
+    window.webContents.once("did-finish-load", showRequestedModelSettings);
     window.on("closed", () => {
       win = null;
       stop();
@@ -281,7 +283,19 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
     void window.loadFile(PAGE).catch(() => { if (!window.isDestroyed()) window.close(); });
   }
 
-  return { open, stop };
+  function showRequestedModelSettings() {
+    if (!modelSettingsRequested || !win) return;
+    modelSettingsRequested = false;
+    win.webContents.send("chat:open-model-settings");
+  }
+
+  function openModelSettings() {
+    modelSettingsRequested = true;
+    open();
+    if (!win?.webContents.isLoading()) showRequestedModelSettings();
+  }
+
+  return { open, openModelSettings, stop };
 }
 
 module.exports = { createChatWindow };

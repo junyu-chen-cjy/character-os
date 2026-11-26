@@ -6,6 +6,7 @@ const transcript = el("transcript");
 const viewport = el("viewport");
 const settings = el("settings");
 let state;
+let settingsRequested = false;
 let pending = false;
 let sidebarKey = "";
 let transcriptKey = "";
@@ -85,6 +86,7 @@ function render(next) {
   showError(el("chat-error"), state.notice);
   updateComposer();
   if (follow) viewport.scrollTop = viewport.scrollHeight;
+  if (settingsRequested) showSettings();
 }
 
 async function action(run, errorTarget = el("chat-error")) {
@@ -111,6 +113,8 @@ async function action(run, errorTarget = el("chat-error")) {
 
 function showSettings() {
   if (!state) return;
+  settingsRequested = false;
+  if (settings.open) return;
   el("base-url").value = state.model.baseUrl;
   el("model-id").value = state.model.model;
   el("system-prompt").value = state.model.systemPrompt;
@@ -127,6 +131,10 @@ function showSettings() {
 }
 
 window.chat.onChanged(render);
+window.chat.onOpenModelSettings(() => {
+  settingsRequested = true;
+  showSettings();
+});
 void action(window.chat.get);
 
 el("new-chat").addEventListener("click", async () => {

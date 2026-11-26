@@ -18,7 +18,8 @@ function registerSessionIpc(options = {}) {
   const hideSession = requiredDependency(options.hideSession, "hideSession");
   const setSessionAlias = requiredDependency(options.setSessionAlias, "setSessionAlias");
   const showDashboard = requiredDependency(options.showDashboard, "showDashboard");
-  const setSessionHudPinned = requiredDependency(options.setSessionHudPinned, "setSessionHudPinned");
+  const setSessionHudPinned = options.enableAuxiliarySurfaces === false
+    ? null : requiredDependency(options.setSessionHudPinned, "setSessionHudPinned");
   const ackSessionCompletion = requiredDependency(options.ackSessionCompletion, "ackSessionCompletion");
   const openSessionFolder = requiredDependency(options.openSessionFolder, "openSessionFolder");
   const setSessionAutomationOverride = requiredDependency(
@@ -79,14 +80,16 @@ function registerSessionIpc(options = {}) {
   // Dashboard gets a narrow, secret-free manual refresh capability. The API
   // key remains inside kimiQuotaRuntime, and only the real local Dashboard
   // main frame may ask for status or trigger the existing refresh path.
-  handle("dashboard:get-kimi-quota-status", (event) => {
-    const rejected = rejectUntrustedDashboardEvent(event);
-    return rejected || getKimiQuotaStatus();
-  });
-  handle("dashboard:refresh-kimi-quota", (event) => {
-    const rejected = rejectUntrustedDashboardEvent(event);
-    return rejected || refreshKimiQuota();
-  });
+  if (options.enableAuxiliarySurfaces !== false) {
+    handle("dashboard:get-kimi-quota-status", (event) => {
+      const rejected = rejectUntrustedDashboardEvent(event);
+      return rejected || getKimiQuotaStatus();
+    });
+    handle("dashboard:refresh-kimi-quota", (event) => {
+      const rejected = rejectUntrustedDashboardEvent(event);
+      return rejected || refreshKimiQuota();
+    });
+  }
   on("dashboard:focus-session", (_event, sessionId) =>
     focusSession(sessionId, { requestSource: "dashboard" })
   );
@@ -211,18 +214,21 @@ function registerSessionIpc(options = {}) {
       quickResult("dismissFromRenderer", event, payload));
   }
 
-  handle("session-hud:get-i18n", () => getI18n());
-  handle("session-hud:open-session-folder", (_event, sessionId) => {
-    if (typeof sessionId !== "string" || !sessionId) {
-      return { status: "error", message: "session-hud:open-session-folder requires a sessionId string" };
-    }
-    return openSessionFolder(sessionId);
-  });
-  on("session-hud:focus-session", (_event, sessionId) =>
-    focusSession(sessionId, { requestSource: "hud" })
-  );
-  on("session-hud:open-dashboard", () => showDashboard({ source: "hud" }));
-  on("session-hud:set-pinned", (_event, value) => setSessionHudPinned(!!value));
+  if (options.enableAuxiliarySurfaces !== false) {
+    handle("session-hud:get-i18n", () => getI18n());
+    handle("session-hud:open-session-folder", (_event, sessionId) => {
+      if (typeof sessionId !== "string" || !sessionId) {
+        return { status: "error", message: "session-hud:open-session-folder requires a sessionId string" };
+      }
+      return openSessionFolder(sessionId);
+    });
+    on("session-hud:focus-session", (_event, sessionId) =>
+      focusSession(sessionId, { requestSource: "hud" })
+    );
+    on("session-hud:open-dashboard", () => showDashboard({ source: "hud" }));
+    on("session-hud:set-pinned", (_event, value) => setSessionHudPinned(!!value));
+
+  }
 
   on("settings:open-dashboard", () => showDashboard({ source: "settings" }));
   on("show-dashboard", () => showDashboard());

@@ -70,7 +70,7 @@ const isCodexPermissionInterceptEnabled = (snapshot) => getCodexPermissionMode(s
 // supplies an in-memory defaults fallback, so every prefs-backed runtime gate
 // must fail closed until restart rather than treating those defaults as user
 // intent.
-function createRuntimeAgentGate({ getSnapshot, isAuthoritative = () => true } = {}) {
+function createRuntimeAgentGate({ getSnapshot, isAuthoritative = () => true, isAvailable = () => true } = {}) {
   if (typeof getSnapshot !== "function") {
     throw new TypeError("createRuntimeAgentGate requires getSnapshot");
   }
@@ -95,22 +95,22 @@ function createRuntimeAgentGate({ getSnapshot, isAuthoritative = () => true } = 
   return Object.freeze({
     isAuthoritative: canUseSnapshot,
     isAgentEnabled(agentId) {
-      return withSnapshot((current) => isAgentEnabled(current, agentId));
+      return isAvailable(agentId) && withSnapshot((current) => isAgentEnabled(current, agentId));
     },
     isAgentIntegrationInstalled(agentId) {
-      return withSnapshot((current) => isAgentIntegrationInstalled(current, agentId));
+      return isAvailable(agentId) && withSnapshot((current) => isAgentIntegrationInstalled(current, agentId));
     },
     shouldSyncAgentIntegration(agentId) {
-      return withSnapshot((current) => shouldSyncAgentIntegration(current, agentId));
+      return isAvailable(agentId) && withSnapshot((current) => shouldSyncAgentIntegration(current, agentId));
     },
     isAgentPermissionsEnabled(agentId) {
-      return withSnapshot((current) => isAgentPermissionsEnabled(current, agentId));
+      return isAvailable(agentId) && withSnapshot((current) => isAgentPermissionsEnabled(current, agentId));
     },
     isAgentSubagentPermissionsEnabled(agentId) {
-      return withSnapshot((current) => isAgentSubagentPermissionsEnabled(current, agentId));
+      return isAvailable(agentId) && withSnapshot((current) => isAgentSubagentPermissionsEnabled(current, agentId));
     },
     isAgentNotificationHookEnabled(agentId) {
-      return withSnapshot((current) => isAgentNotificationHookEnabled(current, agentId));
+      return isAvailable(agentId) && withSnapshot((current) => isAgentNotificationHookEnabled(current, agentId));
     },
     isCodexNativeNotificationSoundEnabled() {
       return withSnapshot((current) => isCodexNativeNotificationSoundEnabled(current));
@@ -126,7 +126,7 @@ function createRuntimeAgentGate({ getSnapshot, isAuthoritative = () => true } = 
         const agents = current && current.agents;
         if (!agents || typeof agents !== "object") return true;
         const probe = { agents };
-        return Object.keys(agents).some((agentId) => isAgentEnabled(probe, agentId));
+        return Object.keys(agents).some((agentId) => isAvailable(agentId) && isAgentEnabled(probe, agentId));
       });
     },
   });

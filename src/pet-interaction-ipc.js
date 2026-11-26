@@ -67,7 +67,8 @@ function registerPetInteractionIpc(options = {}) {
   const focusLog = requiredDependency(options.focusLog, "focusLog");
   const showDashboard = requiredDependency(options.showDashboard, "showDashboard");
   const focusSession = requiredDependency(options.focusSession, "focusSession");
-  const revealSessionHud = requiredDependency(options.revealSessionHud, "revealSessionHud");
+  const revealSessionHud = options.enableLegacyFocus === false
+    ? null : requiredDependency(options.revealSessionHud, "revealSessionHud");
   const setLowPowerIdlePaused = requiredDependency(
     options.setLowPowerIdlePaused,
     "setLowPowerIdlePaused"
@@ -176,7 +177,16 @@ function registerPetInteractionIpc(options = {}) {
     if (isMiniMode()) exitMiniMode();
   });
 
-  on("pet-interaction:reveal-session-hud", () => {
+  if (typeof options.openChat === "function") {
+    on("pet-interaction:open-chat", (event) => {
+      const contents = options.getHitWindow?.()?.webContents;
+      if (contents && event.sender === contents && event.senderFrame && event.senderFrame === contents.mainFrame) {
+        options.openChat();
+      }
+    });
+  }
+
+  if (options.enableLegacyFocus !== false) on("pet-interaction:reveal-session-hud", () => {
     revealSessionHud();
   });
 
@@ -220,7 +230,7 @@ function registerPetInteractionIpc(options = {}) {
     }
   });
 
-  on("focus-terminal", () => {
+  if (options.enableLegacyFocus !== false) on("focus-terminal", () => {
     const focusableIds = getFocusableLocalHudSessionIds();
     focusLog(`focus request source=pet-body sid=- focusableCount=${focusableIds.length}`);
     if (focusableIds.length > 1) {

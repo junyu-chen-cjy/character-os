@@ -339,7 +339,6 @@ class SiteHost(unittest.TestCase):
     def test_hostname_agrees_everywhere_it_is_written(self):
         uri = json.loads((ROOT / "distribution/apt/config.json").read_text())["uri"]
         self.assertIn(f"--previous-url {uri})", (ROOT / ".github/workflows/publish-apt.yml").read_text())
-        self.assertIn(f'APT_GUIDE_URL = "{uri}/"', (ROOT / "src/updater.js").read_text())
         host = repo.urllib.parse.urlsplit(uri).hostname
         self.assertEqual((ROOT / "distribution/apt/index.html").read_text().count(f"<code>{host}</code>"), 2)
 

@@ -251,6 +251,7 @@ function createHarness(overrides = {}) {
     refreshDshDesktopDiscovery: overrides.refreshDshDesktopDiscovery,
     refreshWslDetection: overrides.refreshWslDetection,
     togglePetMiniMode: overrides.togglePetMiniMode,
+    productSettings: overrides.productSettings,
     checkForUpdates: overrides.checkForUpdates || ((manual) => {
       calls.push(["checkForUpdates", manual]);
       return { state: "up-to-date", version: "1.2.3" };
@@ -275,6 +276,26 @@ function createHarness(overrides = {}) {
   });
   return { ipcMain, runtime, calls, activeTheme, settingsWindow };
 }
+
+test("Product Settings blocks old channels and non-product agent commands", async () => {
+  let opened = 0;
+  const { ipcMain, calls } = createHarness({
+    productSettings: {
+      isAgentAvailable: id => id === "codex",
+      openModelSettings: () => { opened += 1; },
+    },
+  });
+  const command = (action, payload) => ipcMain.invoke("settings:command", { action, payload });
+  assert.equal((await command("installAgentIntegration", { agentId: "claude-code" })).status, "error");
+  assert.equal((await command("installAgentIntegration", { agentId: "codex" })).status, "ok");
+  assert.ok(calls.some(call => call[0] === "applyCommand" && call[1] === "installAgentIntegration"));
+  assert.equal((await command("openChatModelSettings")).status, "ok");
+  ipcMain.invokeEvent = { sender: {}, senderFrame: null };
+  assert.equal((await command("openChatModelSettings")).status, "error");
+  assert.equal(opened, 1);
+  assert.equal(ipcMain.handlers.has("settings:check-for-updates"), false);
+  assert.equal(ipcMain.handlers.has("settings:detect-agent-installations"), false);
+});
 
 test("only the trusted Settings window can switch the pet's mini mode", async () => {
   let toggles = 0;

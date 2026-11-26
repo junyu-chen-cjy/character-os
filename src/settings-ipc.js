@@ -4,6 +4,24 @@ const defaultFs = require("fs");
 const defaultPath = require("path");
 const { pathToFileURL } = require("url");
 const { detectAgentInstallations: defaultDetectAgentInstallations } = require("./agent-installation-detector");
+
+const PRODUCT_SETTINGS_CHANNELS = new Set([
+  "settings:get-snapshot", "settings:update", "settings:command",
+  "settings:get-startup-render-state", "settings:list-themes", "settings:list-agents",
+  "settings:begin-size-preview", "settings:preview-size", "settings:end-size-preview",
+  "settings:get-size-context",
+]);
+const PRODUCT_SETTINGS_KEYS = new Set([
+  "lang", "openAtLogin", "soundMuted", "size", "keepSizeAcrossDisplays",
+  "petAlwaysOnTop", "fullscreenAutoHide", "destructiveActionReminder", "permissionBubblesEnabled",
+]);
+const PRODUCT_AGENT_COMMANDS = new Set([
+  "installAgentIntegration", "uninstallAgentIntegration", "setAgentFlag", "setAgentPermissionMode",
+]);
+const PRODUCT_SETTINGS_COMMANDS = new Set([
+  "resizePet", "restartClawd", "setThemeSelection", "setPermissionAutomationMode",
+  ...PRODUCT_AGENT_COMMANDS,
+]);
 const {
   readDeepSeekHarnessNotices: defaultReadDshNotices,
   acknowledgeDeepSeekHarnessNotice: defaultAcknowledgeDshNotice,
@@ -379,6 +397,7 @@ function registerSettingsIpc(options = {}) {
   let currentFeishuApproverLookup = null;
 
   function handle(channel, listener) {
+    if (options.productSettings && !PRODUCT_SETTINGS_CHANNELS.has(channel)) return;
     ipcMain.handle(channel, listener);
     disposers.push(() => ipcMain.removeHandler(channel));
   }
@@ -646,9 +665,16 @@ function registerSettingsIpc(options = {}) {
     const rejected = rejectUntrustedSettingsEvent(event);
     return rejected || roamFenceSettings.clearFence();
   });
-  handle("settings:update", (_event, payload) => {
+  handle("settings:update", (event, payload) => {
     if (!payload || typeof payload !== "object") {
       return { status: "error", message: "settings:update payload must be { key, value }" };
+    }
+    if (options.productSettings) {
+      const rejected = rejectUntrustedSettingsEvent(event);
+      if (rejected) return rejected;
+      if (!PRODUCT_SETTINGS_KEYS.has(payload.key)) {
+        return { status: "error", message: "This preference is unavailable in Character OS." };
+      }
     }
     if (payload.key === "tgMigration") {
       return { status: "error", message: "tgMigration is internal; use telegramMigration.dispatch" };
@@ -710,6 +736,27 @@ function registerSettingsIpc(options = {}) {
   handle("settings:command", async (event, payload) => {
     if (!payload || typeof payload !== "object") {
       return { status: "error", message: "settings:command payload must be { action, payload }" };
+    }
+    const product = options.productSettings;
+    if (product) {
+      const rejected = rejectUntrustedSettingsEvent(event);
+      if (rejected) return rejected;
+      if (payload.action === "openChatModelSettings") {
+        product.openModelSettings();
+        return { status: "ok" };
+      }
+      if (payload.action === "openLocalDataFolder") {
+        const error = await product.openDataFolder();
+        return error ? { status: "error", message: error } : { status: "ok" };
+      }
+      if (payload.action === "recoverPetPosition") {
+        return product.recoverPet()
+          ? { status: "ok" } : { status: "error", message: "The pet could not be moved." };
+      }
+      if (!PRODUCT_SETTINGS_COMMANDS.has(payload.action)
+          || (PRODUCT_AGENT_COMMANDS.has(payload.action) && !product.isAgentAvailable(payload.payload?.agentId))) {
+        return { status: "error", message: "This action is unavailable in Character OS." };
+      }
     }
     if (payload.action === "togglePetMiniMode") {
       const rejected = rejectUntrustedSettingsEvent(event);
@@ -1049,7 +1096,7 @@ function registerSettingsIpc(options = {}) {
   handle("settings:list-agents", () => {
     try {
       const snapshot = settingsController.getSnapshot();
-      const custom = Array.isArray(snapshot.customApplications)
+      const custom = !options.productSettings && Array.isArray(snapshot.customApplications)
         ? snapshot.customApplications.map((application) => {
           const port = getHookServerPort();
           const stateEvents = getRecentHookEvents({ agentId: application.id })

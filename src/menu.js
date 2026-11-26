@@ -70,20 +70,6 @@ module.exports = function initMenu(ctx) {
     reapplyMacVisibility: ctx.reapplyMacVisibility,
   }) : null;
 
-  function buildBringToPrimaryDisplayMenuItem() {
-    return {
-      label: t("bringPetToPrimaryDisplay"),
-      enabled: typeof ctx.bringPetToPrimaryDisplay === "function"
-        && !ctx.getMiniMode()
-        && !ctx.getMiniTransitioning(),
-      click: () => {
-        if (typeof ctx.bringPetToPrimaryDisplay === "function") {
-          ctx.bringPetToPrimaryDisplay();
-        }
-      },
-    };
-  }
-
   // ── System tray ──
   function createTray() {
     if (ctx.tray) return;
@@ -112,77 +98,7 @@ module.exports = function initMenu(ctx) {
 
   function buildTrayMenu() {
     if (!ctx.tray) return;
-    // Quick noise toggles (bubbles + sound) kept together.
-    const noiseGroup = [
-      {
-        label: t("hideBubbles"),
-        type: "checkbox",
-        checked: ctx.hideBubbles,
-        click: (menuItem) => { ctx.hideBubbles = menuItem.checked; },
-      },
-      {
-        label: t("soundEffects"),
-        type: "checkbox",
-        checked: !ctx.soundMuted,
-        click: (menuItem) => { ctx.soundMuted = !menuItem.checked; },
-      },
-    ];
-
-    // OS-integration / placement group: bring-to-primary, mac dock/menu-bar,
-    // start-on-login.
-    const systemGroup = [
-      buildBringToPrimaryDisplayMenuItem(),
-    ];
-    if (isMac) {
-      systemGroup.push(
-        {
-          label: t("showInMenuBar"),
-          type: "checkbox",
-          checked: ctx.showTray,
-          enabled: ctx.showTray ? ctx.showDock : true, // can't uncheck if Dock is already hidden
-          click: (menuItem) => { ctx.showTray = menuItem.checked; },
-        },
-        {
-          label: t("showInDock"),
-          type: "checkbox",
-          checked: ctx.showDock,
-          enabled: ctx.showDock ? ctx.showTray : true, // can't uncheck if Menu Bar is already hidden
-          click: (menuItem) => { ctx.showDock = menuItem.checked; },
-        },
-      );
-    }
-    systemGroup.push({
-      label: t("startOnLogin"),
-      type: "checkbox",
-      // Bound to prefs via ctx.openAtLogin. The setter routes to
-      // settings-controller → openAtLogin pre-commit gate, which calls the
-      // OS API. Subscriber in main.js rebuilds the menu on commit, so the
-      // checkbox updates without explicit buildTrayMenu/buildContextMenu().
-      checked: ctx.openAtLogin,
-      click: (menuItem) => { ctx.openAtLogin = menuItem.checked; },
-    });
-
-    const appGroup = [
-      {
-        label: t("settings"),
-        click: () => ctx.openSettingsWindow(),
-      },
-    ];
-    const quitGroup = [
-      { label: t("quit"), click: () => requestAppQuit() },
-    ];
-
-    appGroup.push(buildPetVisibilityItem());
-
-    const displays = screen.getAllDisplays();
-    if (displays.length > 1 && !ctx.getMiniMode()) {
-      systemGroup.push({
-        label: t("sendToDisplay"),
-        submenu: buildDisplaySubmenu(displays),
-      });
-    }
-    const items = joinGroups([buildWorkGroup(), [buildSleepItem()], noiseGroup, systemGroup, appGroup, quitGroup]);
-    ctx.tray.setContextMenu(Menu.buildFromTemplate(items));
+    ctx.tray.setContextMenu(Menu.buildFromTemplate(buildPetMenuTemplate()));
   }
 
   function buildAgentClientsMenuItem() {
@@ -367,47 +283,6 @@ module.exports = function initMenu(ctx) {
     }));
   }
 
-  function buildDisplaySubmenu(displays = screen.getAllDisplays()) {
-    if (displays.length <= 1) return [{ label: t("displayLabel").replace("{n}", 1), enabled: false }];
-    const currentBounds = ctx.getPetWindowBounds ? ctx.getPetWindowBounds() : null;
-    const current = currentBounds
-      ? screen.getDisplayNearestPoint({
-        x: Math.round(currentBounds.x + currentBounds.width / 2),
-        y: Math.round(currentBounds.y + currentBounds.height / 2),
-      })
-      : null;
-    return displays.map((d, i) => {
-      const isPrimary = d.bounds.x === 0 && d.bounds.y === 0;
-      const labelKey = isPrimary ? "displayLabelPrimary" : "displayLabel";
-      const res = t("displayResolution").replace("{w}", d.bounds.width).replace("{h}", d.bounds.height);
-      const isCurrent = current && current.id === d.id;
-      return {
-        label: `${t(labelKey).replace("{n}", i + 1)}  ${res}`,
-        enabled: !isCurrent,
-        click: () => sendToDisplay(d),
-      };
-    });
-  }
-
-  function sendToDisplay(display) {
-    if (!ctx.win || ctx.win.isDestroyed()) return;
-    if (ctx.getMiniMode()) return;
-    // With a stranded drag lock, syncHitWin() defers and the input window
-    // would stay behind while the pet jumps displays. Release before moving;
-    // a live drag only loses its follow until its own pointerup completes.
-    if (typeof ctx.releaseStrandedDragLock === "function") ctx.releaseStrandedDragLock();
-    const wa = display.workArea;
-    const size = typeof ctx.getEffectiveCurrentPixelSize === "function"
-      ? ctx.getEffectiveCurrentPixelSize(wa)
-      : (SIZES[ctx.currentSize] || ctx.getCurrentPixelSize(wa));
-    const x = Math.round(wa.x + (wa.width - size.width) / 2);
-    const y = Math.round(wa.y + (wa.height - size.height) / 2);
-    ctx.applyPetWindowBounds({ x, y, width: size.width, height: size.height });
-    ctx.syncHitWin();
-    ctx.repositionBubbles();
-    ctx.flushRuntimeStateToPrefs();
-  }
-
   function buildWorkGroup() {
     return [
       ...(typeof ctx.openChat === "function" ? [{ label: t("openChat"), click: ctx.openChat }] : []),
@@ -433,13 +308,17 @@ module.exports = function initMenu(ctx) {
     };
   }
 
-  function buildContextMenu() {
-    ctx.contextMenu = Menu.buildFromTemplate(joinGroups([
+  function buildPetMenuTemplate() {
+    return joinGroups([
       buildWorkGroup(),
       [buildSleepItem(), buildPetVisibilityItem()],
       [{ label: t("settings"), click: () => ctx.openSettingsWindow() }],
       [{ label: t("quit"), click: () => requestAppQuit() }],
-    ]));
+    ]);
+  }
+
+  function buildContextMenu() {
+    ctx.contextMenu = Menu.buildFromTemplate(buildPetMenuTemplate());
   }
 
   function showPetContextMenu() {

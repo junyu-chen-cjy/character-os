@@ -270,7 +270,7 @@
     renderLocalBody(parent);
   }
 
-  function renderLocalBody(parent) {
+  function renderLocalBody(parent, { includeCodexLink = true } = {}) {
     const destructiveRow = helpers.buildSwitchRow({
       key: "destructiveActionReminder",
       labelKey: "rowDestructiveActionReminder",
@@ -285,7 +285,7 @@
 
     // The per-tool block only makes sense for an agent that is actually wired
     // in; without Codex there is no approval owner to redirect.
-    if (readers.readAgentIntegrationInstalled("codex")) {
+    if (includeCodexLink && readers.readAgentIntegrationInstalled("codex")) {
       parent.appendChild(helpers.buildSection(t("sectionPermissionPerTool"), [
         buildCodexApprovalOwnerRow(),
       ]));
@@ -372,6 +372,7 @@
     ops = core.ops;
     i18n = core.i18n;
     core.tabs.permissions = {
+      renderLocalBody,
       render,
       patchInPlace,
       refreshRuntimeStatus,

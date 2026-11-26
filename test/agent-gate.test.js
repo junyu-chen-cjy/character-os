@@ -836,3 +836,19 @@ describe("setAgentPermissionMode command", () => {
       { agentId: "codex", mode: "invalid" }, deps).status, "error");
   });
 });
+
+
+it("keeps legacy integration preferences dormant outside the product allowlist", () => {
+  const { isProductAgent } = require("../src/product-agents");
+  const active = { enabled: true, integrationInstalled: true };
+  const gate = createRuntimeAgentGate({
+    getSnapshot: () => ({ agents: { codex: active, "antigravity-cli": active, "claude-code": active } }),
+    isAvailable: isProductAgent,
+  });
+  assert.equal(gate.shouldSyncAgentIntegration("codex"), true);
+  assert.equal(gate.shouldSyncAgentIntegration("antigravity-cli"), true);
+  assert.equal(gate.shouldSyncAgentIntegration("claude-code"), false);
+  assert.equal(gate.isAgentEnabled("claude-code"), false);
+  assert.equal(gate.isAgentPermissionsEnabled("copilot-cli"), false);
+  assert.equal(active.integrationInstalled, true);
+});

@@ -571,6 +571,7 @@
     ops = core.ops;
     i18n = core.i18n;
     core.tabs.general = {
+      buildLanguageRow,
       render,
       patchInPlace,
     };

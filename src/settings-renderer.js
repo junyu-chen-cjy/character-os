@@ -1,259 +1,205 @@
 "use strict";
 
 const core = globalThis.ClawdSettingsCore;
-
-// Icons resolve via settings-icons.js at render time (keyed by tab id),
-// not as emoji/unicode glyphs \u2014 those rendered inconsistently across
-// system fonts and didn't dark-mode well.
-const SIDEBAR_TABS = [
-  { id: "general", labelKey: "sidebarGeneral", available: true },
-  { id: "pet", labelKey: "sidebarPet", available: true },
-  { id: "notifications", labelKey: "sidebarNotifications", available: true },
-  { id: "sessions", labelKey: "sidebarSessions", available: true },
-  { id: "permissions", labelKey: "sidebarPermissions", available: true },
-  { id: "agents", labelKey: "sidebarAgents", available: true, groupStart: true },
-  { id: "remote-ssh", labelKey: "sidebarRemoteSsh", available: true },
-  { id: "discord-presence", labelKey: "sidebarDiscordPresence", available: true },
-  { id: "theme", labelKey: "sidebarTheme", available: true, groupStart: true },
-  { id: "animOverrides", labelKey: "sidebarAnimOverrides", available: true },
-  { id: "shortcuts", labelKey: "sidebarShortcuts", available: true },
-  { id: "about", labelKey: "sidebarAbout", available: true, groupStart: true },
-];
-
-function getTabIcon(tabId) {
-  const icons = globalThis.ClawdSettingsIcons;
-  if (icons && typeof icons.getIcon === "function") return icons.getIcon(tabId);
-  return "";
-}
-
-let sidebarTabs = null;
-
-function renderSidebar() {
-  document.title = core.helpers.t("settingsWindowTitle");
-  const sidebar = document.getElementById("sidebar");
-  if (!sidebar) return;
-  const panels = sidebarTabs?.panels;
-  if (sidebarTabs) sidebarTabs.dispose();
-  sidebar.innerHTML = "";
-  if (
-    globalThis.ClawdSettingsDoctorModal
-    && typeof globalThis.ClawdSettingsDoctorModal.renderSidebarIndicator === "function"
-  ) {
-    globalThis.ClawdSettingsDoctorModal.renderSidebarIndicator(sidebar, core);
-  }
-  sidebarTabs = core.helpers.buildTabs({
-    id: "settings-navigation",
-    ariaLabel: core.helpers.t("settingsWindowTitle"),
-    orientation: "vertical",
-    className: "settings-sidebar-tabs",
-    buttonClassName: "sidebar-item",
-    value: core.state.activeTab,
-    panels,
-    options: SIDEBAR_TABS.map((tab) => ({ ...tab, value: tab.id, disabled: !tab.available })),
-    onChange: (value) => core.ops.selectTab(value),
-    renderLabel(item, tab) {
-      item.classList.toggle("sidebar-item-group-start", tab.groupStart === true);
-      // Icons come from the bundled settings-icons.js, never user input.
-      item.innerHTML =
-        `<span class="sidebar-item-icon" aria-hidden="true">${getTabIcon(tab.id)}</span>` +
-        `<span class="sidebar-item-label">${core.helpers.escapeHtml(core.helpers.t(tab.labelKey))}</span>` +
-        (tab.available ? "" : `<span class="sidebar-item-soon">${core.helpers.escapeHtml(core.helpers.t("sidebarSoon"))}</span>`);
-    },
-  });
-  sidebar.appendChild(sidebarTabs.element);
-}
-
-function renderPlaceholder(parent) {
-  const div = document.createElement("div");
-  div.className = "placeholder";
-  div.innerHTML =
-    `<div class="placeholder-icon">${getTabIcon("placeholder")}</div>` +
-    `<div class="placeholder-title">${core.helpers.escapeHtml(core.helpers.t("placeholderTitle"))}</div>` +
-    `<div class="placeholder-desc">${core.helpers.escapeHtml(core.helpers.t("placeholderDesc"))}</div>`;
-  parent.appendChild(div);
-}
-
-function renderContent() {
-  const content = document.getElementById("content");
-  if (!content) return;
-  core.ops.clearMountedControls();
-  content.innerHTML = "";
-  if (!sidebarTabs) renderSidebar();
-  sidebarTabs.setValue(core.state.activeTab);
-  for (const panel of sidebarTabs.panels.values()) {
-    panel.innerHTML = "";
-    content.appendChild(panel);
-  }
-  const panel = sidebarTabs.panels.get(core.state.activeTab);
-  const tab = core.tabs[core.state.activeTab];
-  if (tab && typeof tab.render === "function") {
-    tab.render(panel, core);
-  } else {
-    renderPlaceholder(panel);
-  }
-}
-
-core.ops.installRenderHooks({
-  sidebar: renderSidebar,
-  content: renderContent,
-});
+const { helpers, ops, state } = core;
+const t = helpers.t;
 
 globalThis.ClawdSettingsTabGeneral.init(core);
 globalThis.ClawdSettingsTabPet.init(core);
-globalThis.ClawdSettingsTabNotifications.init(core);
-globalThis.ClawdSettingsTabSessions.init(core);
 globalThis.ClawdSettingsTabPermissions.init(core);
-globalThis.ClawdSettingsTabAgents.init(core);
-globalThis.ClawdSettingsTabTheme.init(core);
-// Not a top-level tab anymore — it provides the "on / off" subtab that
-// ClawdSettingsTabAnimOverrides renders. init() just wires up the core refs.
-globalThis.ClawdSettingsTabAnimMap.init(core);
-globalThis.ClawdSettingsTabAnimOverrides.init(core);
-globalThis.ClawdSettingsTabShortcuts.init(core);
-if (globalThis.ClawdSettingsTabTelegramApproval) globalThis.ClawdSettingsTabTelegramApproval.init(core);
-if (globalThis.ClawdSettingsTabDiscordPresence) globalThis.ClawdSettingsTabDiscordPresence.init(core);
-globalThis.ClawdSettingsTabAbout.init(core);
-if (globalThis.ClawdSettingsTabRemoteSsh) globalThis.ClawdSettingsTabRemoteSsh.init(core);
-if (globalThis.ClawdSettingsTabMobile) globalThis.ClawdSettingsTabMobile.init(core);
 
-core.ops.restoreNavigationState();
-function selectRequestedTab(tab) {
-  if (tab === "sessions") {
-    core.ops.selectTab(tab, { persist: false });
-  }
+const { buildLanguageRow } = core.tabs.general;
+const { buildSizeSliderRow, buildPetAlwaysOnTopRow } = core.tabs.pet;
+const { renderLocalBody: renderPermissions } = core.tabs.permissions;
+delete core.tabs.pet;
+delete core.tabs.permissions;
+
+const tabs = [
+  { id: "general", labelKey: "sidebarGeneral" },
+  { id: "models", labelKey: "productModels" },
+  { id: "agents", labelKey: "productAgents" },
+  { id: "data", labelKey: "productData" },
+  { id: "character", labelKey: "productCharacter" },
+];
+let navigation;
+let themes = [];
+let agents = [];
+
+function switchRow(key, labelKey, options = {}) {
+  return helpers.buildSwitchRow({ key, labelKey, ...options });
 }
-if (window.settingsAPI && typeof window.settingsAPI.onRequestedTab === "function") {
-  window.settingsAPI.onRequestedTab(selectRequestedTab);
+
+function actionRow(labelKey, buttonKey, action, payload) {
+  const row = helpers.buildSettingRow({ labelKey });
+  const button = helpers.buildButton({ labelKey: buttonKey });
+  helpers.attachActivation(button, () => window.settingsAPI.command(action, payload));
+  row.controlElement.appendChild(button);
+  return row.element;
 }
-if (window.settingsAPI && typeof window.settingsAPI.consumeRequestedTab === "function") {
-  selectRequestedTab(window.settingsAPI.consumeRequestedTab());
-}
-if (typeof window.addEventListener === "function") {
-  window.addEventListener("beforeunload", () => {
-    core.ops.persistNavigationState();
-    if (sidebarTabs) sidebarTabs.dispose();
+
+function buildThemeRow() {
+  const row = helpers.buildSettingRow({ labelKey: "sidebarTheme" });
+  if (!themes.length) return row.element;
+  const selected = state.snapshot?.theme || themes.find(theme => theme.active)?.id;
+  const select = helpers.buildSettingsSelect({
+    value: selected,
+    options: themes.map(theme => ({ value: theme.id, label: theme.name || theme.id })),
+    ariaLabel: t("sidebarTheme"),
+    onChange: async (themeId) => {
+      const result = await window.settingsAPI.command("setThemeSelection", { themeId });
+      if (result?.status === "ok") return true;
+      ops.showToast(t("toastSaveFailed") + (result?.message || ""), { error: true });
+      return false;
+    },
   });
+  row.controlElement.appendChild(select.element);
+  return row.element;
 }
 
-if (window.settingsAPI && typeof window.settingsAPI.onChanged === "function") {
-  window.settingsAPI.onChanged((payload) => core.ops.applyChanges(payload));
-}
-
-if (window.settingsAPI && typeof window.settingsAPI.onQuotaRingProvidersChanged === "function") {
-  window.settingsAPI.onQuotaRingProvidersChanged((providers) => {
-    const tab = core.tabs.sessions;
-    if (tab && typeof tab.applyQuotaRingProviders === "function") tab.applyQuotaRingProviders(providers);
+function buildAgentRow(agent) {
+  const flags = state.snapshot?.agents?.[agent.id] || {};
+  const row = helpers.buildSettingRow({ label: agent.name });
+  const toggle = helpers.buildButton({ labelKey: flags.enabled ? "productPause" : "productEnable" });
+  helpers.attachActivation(toggle, () => window.settingsAPI.command("setAgentFlag", {
+    agentId: agent.id, flag: "enabled", value: !flags.enabled,
+  }));
+  const hooks = helpers.buildButton({
+    labelKey: flags.integrationInstalled ? "productRemoveHooks" : "productInstallHooks",
   });
-}
-
-if (window.settingsAPI && typeof window.settingsAPI.onDeepseekBalanceStatusChanged === "function") {
-  window.settingsAPI.onDeepseekBalanceStatusChanged((status) => {
-    const tab = core.tabs.agents;
-    if (tab && typeof tab.applyDeepseekBalanceStatus === "function") tab.applyDeepseekBalanceStatus(status);
-  });
-}
-
-if (window.settingsAPI && typeof window.settingsAPI.onAgentActivity === "function") {
-  window.settingsAPI.onAgentActivity((payload) => {
-    const tab = core.tabs.agents;
-    if (tab && typeof tab.applyAgentActivity === "function") tab.applyAgentActivity(payload);
-  });
-}
-
-if (window.settingsAPI && typeof window.settingsAPI.onRecapChanged === "function") {
-  window.settingsAPI.onRecapChanged(() => {
-    const tab = core.tabs.recap;
-    if (tab && typeof tab.applyDataChanged === "function") tab.applyDataChanged();
-  });
-}
-
-if (window.settingsAPI && typeof window.settingsAPI.onAnimationPreviewPosterReady === "function") {
-  window.settingsAPI.onAnimationPreviewPosterReady((payload) => core.ops.applyAnimationPreviewPoster(payload));
-}
-
-if (window.settingsAPI && typeof window.settingsAPI.onShortcutRecordKey === "function") {
-  window.settingsAPI.onShortcutRecordKey((payload) => core.ops.handleShortcutRecordKey(payload));
-}
-
-if (window.settingsAPI && typeof window.settingsAPI.onShortcutFailuresChanged === "function") {
-  window.settingsAPI.onShortcutFailuresChanged((failures) => core.ops.applyShortcutFailures(failures));
-}
-
-if (window.settingsAPI && typeof window.settingsAPI.onRemoteApprovalStatusChanged === "function") {
-  window.settingsAPI.onRemoteApprovalStatusChanged((payload) => {
-    const tab = core.tabs[core.state.activeTab];
-    if (tab && typeof tab.refreshRuntimeStatus === "function") {
-      tab.refreshRuntimeStatus(payload);
+  helpers.attachActivation(hooks, async () => {
+    if (flags.integrationInstalled) {
+      const result = await helpers.showSettingsConfirmModal({
+        title: t("agentIntegrationUninstallConfirmTitle"),
+        detail: t("agentIntegrationUninstallConfirm"),
+        actions: [
+          { id: "cancel", label: t("agentIntegrationUninstallCancel"), defaultFocus: true },
+          { id: "remove", label: t("productRemoveHooks"), tone: "danger" },
+        ],
+      });
+      if (result !== "remove") return { status: "ok" };
     }
+    return window.settingsAPI.command(
+      flags.integrationInstalled ? "uninstallAgentIntegration" : "installAgentIntegration",
+      { agentId: agent.id },
+    );
   });
+  row.controlElement.append(toggle, hooks);
+  return row.element;
 }
 
-if (window.settingsAPI && typeof window.settingsAPI.onUpdateCheckStatus === "function") {
-  window.settingsAPI.onUpdateCheckStatus((snapshot) => {
-    core.runtime.about.updateCheckSnapshot = snapshot || { state: "idle" };
-    const tab = core.tabs.about;
-    if (tab && typeof tab.applyUpdateCheckStatus === "function") {
-      tab.applyUpdateCheckStatus(core.runtime.about.updateCheckSnapshot);
-    }
+function buildCodexModeRow() {
+  const mode = core.readers.readAgentPermissionMode("codex");
+  const row = helpers.buildSettingRow({
+    labelKey: "rowCodexApprovalOwner",
+    descriptionKey: mode === "intercept" ? "rowCodexApprovalOwnerInterceptDesc" : "rowCodexApprovalOwnerAutoDesc",
   });
+  const select = helpers.buildSettingsSelect({
+    value: mode === "intercept" ? "intercept" : "auto",
+    options: [
+      { value: "auto", label: t("productCodexAutomatic") },
+      { value: "intercept", label: t("productCodexIntercept") },
+    ],
+    ariaLabel: t("rowCodexApprovalOwner"),
+    onChange: async (mode) => {
+      const result = await window.settingsAPI.command("setAgentPermissionMode", { agentId: "codex", mode });
+      if (result?.status === "ok") return true;
+      ops.showToast(t("toastSaveFailed") + (result?.message || ""), { error: true });
+      return false;
+    },
+  });
+  row.controlElement.appendChild(select.element);
+  return row.element;
 }
 
-if (window.settingsAPI && typeof window.settingsAPI.onOfficialThemeProgress === "function") {
-  window.settingsAPI.onOfficialThemeProgress((progress) => core.ops.applyOfficialThemeProgress(progress));
+function section(parent, labelKey, rows) {
+  parent.appendChild(helpers.buildSection(t(labelKey), rows));
 }
 
-if (window.settingsAPI && typeof window.settingsAPI.getShortcutFailures === "function") {
-  window.settingsAPI.getShortcutFailures().then((failures) => {
-    core.ops.applyShortcutFailures(failures);
-  }).catch((err) => {
-    console.warn("settings: getShortcutFailures failed", err);
+core.tabs.general = { render(parent) {
+  section(parent, "sidebarGeneral", [
+    buildLanguageRow(),
+    switchRow("openAtLogin", "rowOpenAtLogin"),
+    buildThemeRow(),
+  ]);
+  section(parent, "sidebarNotifications", [
+    switchRow("soundMuted", "rowSoundEnabled", { invert: true }),
+  ]);
+} };
+core.tabs.models = { render(parent) {
+  section(parent, "productModels", [
+    actionRow("productModelConfiguration", "productConfigure", "openChatModelSettings"),
+  ]);
+} };
+core.tabs.agents = { render(parent) {
+  section(parent, "productAgents", agents.map(buildAgentRow));
+  section(parent, "sidebarPermissions", [
+    switchRow("permissionBubblesEnabled", "productPermissionBubbles"),
+    ...(core.readers.readAgentIntegrationInstalled("codex") ? [buildCodexModeRow()] : []),
+  ]);
+  renderPermissions(parent, { includeCodexLink: false });
+} };
+core.tabs.data = { render(parent) {
+  section(parent, "productData", [
+    actionRow("productLocalData", "productOpenFolder", "openLocalDataFolder"),
+  ]);
+} };
+core.tabs.character = { render(parent) {
+  section(parent, "productCharacter", [
+    buildSizeSliderRow(),
+    switchRow("keepSizeAcrossDisplays", "rowKeepSizeAcrossDisplays"),
+    buildPetAlwaysOnTopRow(),
+    ...(core.i18n.IS_MAC || core.i18n.IS_WIN ? [
+      switchRow("fullscreenAutoHide", "rowFullscreenAutoHide"),
+    ] : []),
+    actionRow("productPetPosition", "productRecoverPet", "recoverPetPosition"),
+  ]);
+} };
+
+function renderSidebar() {
+  const sidebar = document.getElementById("sidebar");
+  const panels = navigation?.panels;
+  navigation?.dispose();
+  navigation = helpers.buildTabs({
+    id: "settings-navigation",
+    ariaLabel: t("settingsWindowTitle"),
+    orientation: "vertical",
+    className: "settings-sidebar-tabs",
+    buttonClassName: "sidebar-item",
+    value: state.activeTab,
+    panels,
+    options: tabs.map(({ id, labelKey }) => ({ value: id, label: t(labelKey) })),
+    onChange: tab => ops.selectTab(tab),
   });
+  sidebar.replaceChildren(navigation.element);
 }
 
-if (window.settingsAPI && typeof window.settingsAPI.getSnapshot === "function") {
-  const tintOptionsPromise =
-    typeof window.settingsAPI.getPetTintOptions === "function"
-      ? window.settingsAPI.getPetTintOptions().catch((err) => {
-        console.warn("settings: getPetTintOptions failed", err);
-        return [];
-      })
-      : Promise.resolve([]);
-  const accessoryOptionsPromise =
-    typeof window.settingsAPI.getPetAccessoryOptions === "function"
-      ? window.settingsAPI.getPetAccessoryOptions().catch((err) => {
-        console.warn("settings: getPetAccessoryOptions failed", err);
-        return [];
-      })
-      : Promise.resolve([]);
-  const mouthAccessoryOptionsPromise =
-    typeof window.settingsAPI.getPetMouthAccessoryOptions === "function"
-      ? window.settingsAPI.getPetMouthAccessoryOptions().catch((err) => {
-        console.warn("settings: getPetMouthAccessoryOptions failed", err);
-        return [];
-      })
-      : Promise.resolve([]);
-  Promise.all([
-    window.settingsAPI.getSnapshot(),
-    tintOptionsPromise,
-    accessoryOptionsPromise,
-    mouthAccessoryOptionsPromise,
-  ]).then(([snapshot, petTintOptions, petAccessoryOptions, petMouthAccessoryOptions]) => {
-    core.runtime.petTintOptions = Array.isArray(petTintOptions) ? petTintOptions : [];
-    core.runtime.petAccessoryOptions = Array.isArray(petAccessoryOptions)
-      ? petAccessoryOptions
-      : [];
-    core.runtime.petMouthAccessoryOptions = Array.isArray(petMouthAccessoryOptions)
-      ? petMouthAccessoryOptions
-      : [];
-    core.ops.applyBootstrap(snapshot);
-  });
+function renderContent() {
+  document.title = t("settingsWindowTitle");
+  const content = document.getElementById("content");
+  ops.clearMountedControls();
+  if (!navigation) renderSidebar();
+  navigation.setValue(state.activeTab);
+  content.replaceChildren(...navigation.panels.values());
+  const panel = navigation.panels.get(state.activeTab);
+  panel.replaceChildren();
+  core.tabs[state.activeTab].render(panel);
 }
 
-if (window.settingsAPI && typeof window.settingsAPI.listAgents === "function") {
-  window.settingsAPI.listAgents().then((list) => {
-    core.ops.applyAgentMetadata(list);
-  }).catch((err) => {
-    console.warn("settings: listAgents failed", err);
-    core.ops.applyAgentMetadata([]);
-  });
-}
+ops.installRenderHooks({ sidebar: renderSidebar, content: renderContent });
+ops.restoreNavigationState();
+if (!tabs.some(tab => tab.id === state.activeTab)) ops.selectTab("general");
+window.addEventListener("beforeunload", () => ops.persistNavigationState());
+window.settingsAPI.onChanged(payload => ops.applyChanges(payload));
+window.settingsAPI.onSizeContextChanged(() => ops.syncMountedSizeControl({ fromBroadcast: true }));
+
+Promise.all([
+  window.settingsAPI.getSnapshot(),
+  window.settingsAPI.listThemes().catch(() => []),
+  window.settingsAPI.listAgents().catch(() => []),
+]).then(([snapshot, localThemes, localAgents]) => {
+  themes = localThemes;
+  agents = localAgents;
+  ops.applyBootstrap(snapshot);
+}).catch(() => {
+  document.getElementById("content").textContent = t("toastSaveFailed");
+});

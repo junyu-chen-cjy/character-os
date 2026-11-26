@@ -1561,51 +1561,17 @@ describe("settings tab split", () => {
     }
   });
 
-  it("keeps the sidebar, deep-link whitelist, and icons in sync", () => {
+  it("ships the five product categories and leaves retired pages unmounted", () => {
     const rendererSource = fs.readFileSync(RENDERER, "utf8");
-    const sidebarMatch = rendererSource.match(/const SIDEBAR_TABS = \[([\s\S]*?)\n\];/);
-    assert.ok(sidebarMatch);
-    const sidebarEntries = sidebarMatch[1].split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line.startsWith("{ id:"))
-      .map((line) => ({
-        id: /id: "([^"]+)"/.exec(line)[1],
-        groupStart: /groupStart: true/.test(line),
-      }));
-    assert.deepStrictEqual(sidebarEntries.map((entry) => entry.id), [
-      "general",
-      "pet",
-      "notifications",
-      "sessions",
-      "permissions",
-      "agents",
-      "remote-ssh",
-      "discord-presence",
-      "theme",
-      "animOverrides",
-      "shortcuts",
-      "about",
-    ]);
-    assert.deepStrictEqual(
-      sidebarEntries.filter((entry) => entry.groupStart).map((entry) => entry.id),
-      ["agents", "theme", "about"],
-    );
+    const sidebar = rendererSource.match(/const tabs = \[([\s\S]*?)\n\];/)[1];
+    const ids = [...sidebar.matchAll(/id: "([^"]+)"/g)].map(match => match[1]);
+    assert.deepStrictEqual(ids, ["general", "models", "agents", "data", "character"]);
 
     const windowSource = fs.readFileSync(WINDOW_SOURCE, "utf8");
-    const allowedMatch = windowSource.match(/const ALLOWED_TABS = new Set\(\[([\s\S]*?)\]\);/);
-    assert.ok(allowedMatch);
-    const allowed = [...allowedMatch[1].matchAll(/"([^"]+)"/g)].map((match) => match[1]);
-    assert.deepStrictEqual([...allowed].sort(), sidebarEntries.map((entry) => entry.id).sort());
-
-    const icons = loadIcons();
-    const placeholder = icons.getIcon("placeholder");
-    for (const entry of sidebarEntries) {
-      assert.notStrictEqual(icons.getIcon(entry.id), placeholder, `${entry.id} needs its own icon`);
-    }
-    assert.deepStrictEqual(
-      Object.keys(icons.ICONS).filter((id) => id !== "placeholder" && id !== "recap").sort(),
-      sidebarEntries.map((entry) => entry.id).sort(),
-    );
+    const allowed = windowSource.match(/const ALLOWED_TABS = new Set\(\[([^\]]+)\]\);/)[1];
+    assert.deepStrictEqual([...allowed.matchAll(/"([^"]+)"/g)].map(match => match[1]), ids);
+    const html = fs.readFileSync(path.join(SRC_DIR, "settings.html"), "utf8");
+    assert.doesNotMatch(html, /settings-tab-(recap|telegram-approval|mobile|about|discord-presence)\.js/);
   });
 
   it("restores old navigation state and falls back for unknown ids", () => {
@@ -1675,94 +1641,6 @@ describe("settings tab split", () => {
     assert.strictEqual(permissions.ops.restoreNavigationState(), true);
     assert.strictEqual(permissions.state.activeTab, "permissions");
     assert.strictEqual(permissions.runtime.permissionsSubtab, "local");
-  });
-
-  it("accepts the sessions deep link and ignores hidden Footprints", () => {
-    const source = fs.readFileSync(RENDERER, "utf8");
-    const initStart = source.indexOf("globalThis.ClawdSettingsTabGeneral.init(core);");
-    const wiringStart = source.indexOf("core.ops.restoreNavigationState();");
-    const slice = source.slice(0, initStart) + source.slice(wiringStart);
-
-    function run(consumeTab) {
-      const selected = [];
-      let requestedCallback = null;
-      const core = {
-        state: { activeTab: "general" },
-        helpers: {
-          t: (key) => key,
-          escapeHtml: (value) => value,
-          buildTabs: () => ({
-            element: new FakeElement("div"),
-            panels: new Map(),
-            dispose() {},
-            setValue() {},
-          }),
-        },
-        ops: {
-          installRenderHooks() {},
-          restoreNavigationState() {},
-          persistNavigationState() {},
-          selectTab(tab, options) {
-            selected.push([tab, options]);
-          },
-        },
-        tabs: {},
-      };
-      const windowObject = {
-        addEventListener() {},
-        settingsAPI: {
-          onRequestedTab(cb) {
-            requestedCallback = cb;
-          },
-          consumeRequestedTab() {
-            return consumeTab;
-          },
-          onChanged() {},
-          onAgentActivity() {},
-          onRecapChanged() {},
-          onAnimationPreviewPosterReady() {},
-          onShortcutRecordKey() {},
-          onShortcutFailuresChanged() {},
-          onRemoteApprovalStatusChanged() {},
-          onUpdateCheckStatus() {},
-          onOfficialThemeProgress() {},
-        },
-      };
-      const document = {
-        title: "",
-        getElementById: () => null,
-    createElement: (tagName) => new FakeElement(tagName),
-    createTextNode: (value) => {
-      const node = new FakeElement("#text");
-      node.textContent = String(value || "");
-      return node;
-    },
-      };
-      vm.runInNewContext(slice, {
-        ClawdSettingsCore: core,
-        ClawdSettingsIcons: loadIcons(),
-        window: windowObject,
-        document,
-        globalThis: { ClawdSettingsCore: core, ClawdSettingsIcons: loadIcons() },
-      });
-      return { selected, requestedCallback };
-    }
-
-    const sessions = run("sessions");
-    assert.deepEqual(sessions.selected, [["sessions", { persist: false }]]);
-    sessions.requestedCallback("sessions");
-    sessions.requestedCallback("recap");
-    sessions.requestedCallback("agents");
-    assert.deepEqual(sessions.selected, [
-      ["sessions", { persist: false }],
-      ["sessions", { persist: false }],
-    ]);
-
-    const recap = run("recap");
-    assert.deepEqual(recap.selected, []);
-
-    const agents = run("agents");
-    assert.deepEqual(agents.selected, []);
   });
 
   it("saves the sound toggle optimistically and rolls back noop / failure / rejection", async () => {
