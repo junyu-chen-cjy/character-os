@@ -114,7 +114,6 @@ function createSettingsWindowRuntime(options = {}) {
     "shortcuts",
     "discord-presence",
     "remote-ssh",
-    "recap",
     "about",
   ]);
 

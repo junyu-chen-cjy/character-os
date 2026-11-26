@@ -1429,9 +1429,9 @@ function initUpdater(ctx, deps = {}) {
     return schedulerRunning;
   }
 
-  function setupAutoUpdater() {
+  function setupAutoUpdater({ checkNativeInstallerOnStartup = true } = {}) {
     if (usesExternalUpdate) return;
-    if (isRunningX64OnWindowsArm64()) {
+    if (checkNativeInstallerOnStartup && isRunningX64OnWindowsArm64()) {
       Promise.resolve()
         .then(fetchLatestRelease)
         .then((release) => maybePromptNativeArm64Installer(release, { manual: false }))

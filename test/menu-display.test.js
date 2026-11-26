@@ -69,56 +69,6 @@ function buildBaseCtx(overrides = {}) {
 }
 
 describe("menu send-to-display", () => {
-  it("disables mini entry when mini mode is disabled while keeping exit available", () => {
-    const fakeElectron = {
-      app: { quit: () => {}, setActivationPolicy: () => {}, dock: { show: () => {}, hide: () => {} } },
-      BrowserWindow: function BrowserWindow() {},
-      Menu: {
-        buildFromTemplate(template) {
-          return { template };
-        },
-      },
-      Tray: function Tray() {},
-      nativeImage: {
-        createFromPath() {
-          return {
-            resize() { return this; },
-            setTemplateImage() {},
-          };
-        },
-      },
-      screen: {
-        getAllDisplays: () => [{ id: 1, bounds: { x: 0, y: 0, width: 1920, height: 1080 }, workArea: { x: 0, y: 0, width: 1920, height: 1040 } }],
-        getCursorScreenPoint: () => ({ x: 0, y: 0 }),
-        getDisplayNearestPoint: () => ({ id: 1 }),
-      },
-    };
-    const initMenu = loadMenuWithElectron(fakeElectron);
-    const calls = [];
-
-    const ctx = buildBaseCtx({
-      getDisableMiniMode: () => true,
-      enterMiniViaMenu: () => calls.push("enter"),
-      exitMiniMode: () => calls.push("exit"),
-    });
-    const menu = initMenu(ctx);
-
-    menu.buildContextMenu();
-    const disabledMiniItem = ctx.contextMenu.template[0];
-    assert.strictEqual(disabledMiniItem.label, "Mini Mode");
-    assert.strictEqual(disabledMiniItem.enabled, false);
-    disabledMiniItem.click();
-    assert.deepStrictEqual(calls, []);
-
-    ctx.getMiniMode = () => true;
-    menu.buildContextMenu();
-    const exitMiniItem = ctx.contextMenu.template[0];
-    assert.strictEqual(exitMiniItem.label, "Exit Mini Mode");
-    assert.strictEqual(exitMiniItem.enabled, true);
-    exitMiniItem.click();
-    assert.deepStrictEqual(calls, ["exit"]);
-  });
-
   it("uses shared proportional sizing and repositions floating bubbles even when follow is off", () => {
     const displays = [
       {
@@ -171,11 +121,12 @@ describe("menu send-to-display", () => {
       flushRuntimeStateToPrefs: () => { flushCalls += 1; },
     });
 
-    const menu = initMenu(ctx);
-    menu.buildContextMenu();
+    let trayTemplate;
+    ctx.tray = { setContextMenu: menu => { trayTemplate = menu.template; } };
+    initMenu(ctx).buildTrayMenu();
 
-    const sendToDisplay = ctx.contextMenu.template.find((item) => item.label === "Send to Display");
-    assert.ok(sendToDisplay, "context menu should expose send-to-display");
+    const sendToDisplay = trayTemplate.find((item) => item.label === "Send to Display");
+    assert.ok(sendToDisplay, "tray should expose send-to-display");
     assert.strictEqual(sendToDisplay.submenu.length, 2);
 
     sendToDisplay.submenu[1].click();
@@ -240,10 +191,11 @@ describe("menu send-to-display", () => {
       applyPetWindowBounds: (bounds) => { appliedBounds = bounds; },
     });
 
-    const menu = initMenu(ctx);
-    menu.buildContextMenu();
+    let trayTemplate;
+    ctx.tray = { setContextMenu: menu => { trayTemplate = menu.template; } };
+    initMenu(ctx).buildTrayMenu();
 
-    const sendToDisplay = ctx.contextMenu.template.find((item) => item.label === "Send to Display");
+    const sendToDisplay = trayTemplate.find((item) => item.label === "Send to Display");
     sendToDisplay.submenu[1].click();
 
     assert.strictEqual(getCurrentPixelSizeCalls, 0);
@@ -286,10 +238,11 @@ describe("menu send-to-display stranded drag-lock release (#997 / #998)", () => 
       syncHitWin: () => order.push("syncHitWin"),
     });
 
-    const menu = initMenu(ctx);
-    menu.buildContextMenu();
+    let trayTemplate;
+    ctx.tray = { setContextMenu: menu => { trayTemplate = menu.template; } };
+    initMenu(ctx).buildTrayMenu();
 
-    const sendToDisplay = ctx.contextMenu.template.find((item) => item.label === "Send to Display");
+    const sendToDisplay = trayTemplate.find((item) => item.label === "Send to Display");
     sendToDisplay.submenu[0].click();
 
     // syncHitWin() defers while the lock is held — the release must land
@@ -485,7 +438,7 @@ describe("menu dashboard action", () => {
     const menu = initMenu(ctx);
     menu.buildContextMenu();
 
-    const openDashboard = ctx.contextMenu.template.find((item) => item.label === "Open Dashboard");
+    const openDashboard = ctx.contextMenu.template.find((item) => item.label === "Open Workbench");
     assert.ok(openDashboard, "context menu should expose dashboard entry");
     openDashboard.click();
     assert.strictEqual(called, 1);
@@ -529,7 +482,7 @@ describe("menu dashboard action", () => {
     const menu = initMenu(ctx);
     menu.createTray();
 
-    const openDashboard = ctx.tray.contextMenu.template.find((item) => item.label === "Open Dashboard");
+    const openDashboard = ctx.tray.contextMenu.template.find((item) => item.label === "Open Workbench");
     assert.ok(openDashboard, "tray menu should expose dashboard entry");
     openDashboard.click();
     assert.strictEqual(called, 1);
@@ -563,10 +516,14 @@ it("opens macOS Agent apps from the pet menu and reports a launch failure", () =
     callback(args.includes("Antigravity IDE.app") ? new Error("not found") : null);
   };
   const initMenu = loadMenuWithElectron(fakeElectron, null, "darwin", execFile);
-  const ctx = buildBaseCtx();
+  const ctx = buildBaseCtx({ openChat() {} });
   initMenu(ctx).buildContextMenu();
 
-  const item = ctx.contextMenu.template.find(({ label }) => label === "Open Agent App");
+  const items = ctx.contextMenu.template.filter(entry => entry.type !== "separator");
+  assert.deepEqual(items.map(entry => entry.label), [
+    "Open Chat", "Open Workbench", "Agent Clients", "Sleep (Do Not Disturb)", "Hide Pet", "Settings…", "Quit",
+  ]);
+  const item = items.find(({ label }) => label === "Agent Clients");
   for (const client of item.submenu) client.click();
   assert.deepEqual(calls, [
     ["/usr/bin/open", "-b", "com.openai.codex"],
@@ -576,113 +533,4 @@ it("opens macOS Agent apps from the pet menu and reports a launch failure", () =
   ]);
   assert.equal(errors.length, 1);
   assert.equal(errors[0][0], "Could not open Antigravity IDE");
-});
-
-describe("menu recap action", () => {
-  it("adds a right-click item that deep-links to the recap tab", () => {
-    const fakeElectron = {
-      app: { quit: () => {}, setActivationPolicy: () => {}, dock: { show: () => {}, hide: () => {} } },
-      BrowserWindow: function BrowserWindow() {},
-      Menu: { buildFromTemplate: (template) => ({ template }) },
-      Tray: function Tray() {},
-      nativeImage: { createFromPath: () => ({ resize() { return this; }, setTemplateImage() {} }) },
-      screen: {
-        getAllDisplays: () => [{ id: 1, bounds: { x: 0, y: 0, width: 1920, height: 1080 }, workArea: { x: 0, y: 0, width: 1920, height: 1040 } }],
-        getCursorScreenPoint: () => ({ x: 0, y: 0 }),
-        getDisplayNearestPoint: () => ({ id: 1 }),
-      },
-    };
-    const initMenu = loadMenuWithElectron(fakeElectron);
-    const calls = [];
-    const ctx = buildBaseCtx({ openSettingsWindow: (options) => calls.push(options) });
-    initMenu(ctx).buildContextMenu();
-    const item = ctx.contextMenu.template.find((candidate) => candidate.label === "Open Footprints");
-    assert.ok(item);
-    item.click();
-    assert.deepStrictEqual(calls, [{ tab: "recap" }]);
-  });
-});
-
-describe("menu new session action", () => {
-  function fakeElectron() {
-    return {
-      app: { quit: () => {}, setActivationPolicy: () => {}, dock: { show: () => {}, hide: () => {} } },
-      BrowserWindow: function BrowserWindow() {},
-      Menu: {
-        buildFromTemplate(template) {
-          return { template };
-        },
-      },
-      Tray: function Tray() {},
-      nativeImage: {
-        createFromPath() {
-          return {
-            resize() { return this; },
-            setTemplateImage() {},
-          };
-        },
-      },
-      screen: {
-        getAllDisplays: () => [{ id: 1, bounds: { x: 0, y: 0, width: 1920, height: 1080 }, workArea: { x: 0, y: 0, width: 1920, height: 1040 } }],
-        getCursorScreenPoint: () => ({ x: 0, y: 0 }),
-        getDisplayNearestPoint: () => ({ id: 1 }),
-      },
-    };
-  }
-
-  function findNewSession(ctx) {
-    return ctx.contextMenu.template.find((item) => item.label === "New Claude Session");
-  }
-
-  it("exposes a New Session submenu with the two folder entries", () => {
-    const initMenu = loadMenuWithElectron(fakeElectron());
-    const ctx = buildBaseCtx({
-      newSessionWithFolder: () => {},
-      newSessionInCurrentDir: () => {},
-    });
-    const menu = initMenu(ctx);
-    menu.buildContextMenu();
-
-    const newSession = findNewSession(ctx);
-    assert.ok(newSession, "context menu should expose New Session");
-    assert.ok(Array.isArray(newSession.submenu), "New Session should be a submenu");
-    assert.deepStrictEqual(
-      newSession.submenu.map((item) => item.label),
-      ["Select Folder...", "Home Directory"],
-    );
-  });
-
-  it("Select Folder entry invokes ctx.newSessionWithFolder(t)", () => {
-    const initMenu = loadMenuWithElectron(fakeElectron());
-    let calledWith = null;
-    const ctx = buildBaseCtx({
-      newSessionWithFolder: (t) => { calledWith = t; },
-      newSessionInCurrentDir: () => { throw new Error("wrong handler"); },
-    });
-    const menu = initMenu(ctx);
-    menu.buildContextMenu();
-
-    const newSession = findNewSession(ctx);
-    const selectFolder = newSession.submenu.find((item) => item.label === "Select Folder...");
-    selectFolder.click();
-    assert.strictEqual(typeof calledWith, "function", "handler should receive the translator t");
-    assert.strictEqual(calledWith("newSession"), "New Claude Session");
-  });
-
-  it("Home Directory entry invokes ctx.newSessionInCurrentDir(t)", () => {
-    const initMenu = loadMenuWithElectron(fakeElectron());
-    let calledWith = null;
-    const ctx = buildBaseCtx({
-      newSessionWithFolder: () => { throw new Error("wrong handler"); },
-      newSessionInCurrentDir: (t) => { calledWith = t; },
-    });
-    const menu = initMenu(ctx);
-    menu.buildContextMenu();
-
-    const newSession = findNewSession(ctx);
-    const homeDir = newSession.submenu.find((item) => item.label === "Home Directory");
-    homeDir.click();
-    assert.strictEqual(typeof calledWith, "function", "handler should receive the translator t");
-    assert.strictEqual(calledWith("newSession"), "New Claude Session");
-  });
 });

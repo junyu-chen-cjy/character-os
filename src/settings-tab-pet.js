@@ -77,6 +77,14 @@
     });
   }
 
+  function buildMiniModeRow() {
+    const row = helpers.buildSettingRow({ labelKey: "rowMiniMode" });
+    const button = helpers.buildButton({ labelKey: "rowSwitchMiniMode" });
+    helpers.attachActivation(button, () => window.settingsAPI.command("togglePetMiniMode"));
+    row.controlElement.appendChild(button);
+    return row.element;
+  }
+
   function readRoamMovementStyle() {
     return state.snapshot && state.snapshot.roamConstrainAxis === true
       ? ROAM_MOVEMENT_AXIS
@@ -634,6 +642,7 @@
         labelKey: "rowAllowEdgePinning",
         descKey: "rowAllowEdgePinningDesc",
       }),
+      buildMiniModeRow(),
       helpers.buildSwitchRow({
         key: "disableMiniMode",
         labelKey: "rowDisableMiniMode",

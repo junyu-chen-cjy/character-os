@@ -759,7 +759,7 @@ describe("settings tab split", () => {
     assert.deepStrictEqual(sectionTitles(pet), ["大小", "走动与位置", "窗口置顶", "眼睛跟随", "反应"]);
     assert.deepStrictEqual(sectionRowLabels(pet), [
       ["大小", "跨显示器保持大小"],
-      ["空闲时", "移动方式", "活动范围", "出现频率", "允许贴靠屏幕边缘", "关闭极简模式", "全屏时自动隐藏"],
+      ["空闲时", "移动方式", "活动范围", "出现频率", "允许贴靠屏幕边缘", "极简模式", "关闭极简模式", "全屏时自动隐藏"],
       ["桌宠保持在最前"],
       ["跟随鼠标光标"],
       ["测试结果动画"],
@@ -1584,12 +1584,11 @@ describe("settings tab split", () => {
       "theme",
       "animOverrides",
       "shortcuts",
-      "recap",
       "about",
     ]);
     assert.deepStrictEqual(
       sidebarEntries.filter((entry) => entry.groupStart).map((entry) => entry.id),
-      ["agents", "theme", "recap"],
+      ["agents", "theme", "about"],
     );
 
     const windowSource = fs.readFileSync(WINDOW_SOURCE, "utf8");
@@ -1604,7 +1603,7 @@ describe("settings tab split", () => {
       assert.notStrictEqual(icons.getIcon(entry.id), placeholder, `${entry.id} needs its own icon`);
     }
     assert.deepStrictEqual(
-      Object.keys(icons.ICONS).filter((id) => id !== "placeholder").sort(),
+      Object.keys(icons.ICONS).filter((id) => id !== "placeholder" && id !== "recap").sort(),
       sidebarEntries.map((entry) => entry.id).sort(),
     );
   });
@@ -1678,7 +1677,7 @@ describe("settings tab split", () => {
     assert.strictEqual(permissions.runtime.permissionsSubtab, "local");
   });
 
-  it("wires the deep-link receiver for sessions and recap only", () => {
+  it("accepts the sessions deep link and ignores hidden Footprints", () => {
     const source = fs.readFileSync(RENDERER, "utf8");
     const initStart = source.indexOf("globalThis.ClawdSettingsTabGeneral.init(core);");
     const wiringStart = source.indexOf("core.ops.restoreNavigationState();");
@@ -1757,11 +1756,10 @@ describe("settings tab split", () => {
     assert.deepEqual(sessions.selected, [
       ["sessions", { persist: false }],
       ["sessions", { persist: false }],
-      ["recap", { persist: false }],
     ]);
 
     const recap = run("recap");
-    assert.deepEqual(recap.selected, [["recap", { persist: false }]]);
+    assert.deepEqual(recap.selected, []);
 
     const agents = run("agents");
     assert.deepEqual(agents.selected, []);

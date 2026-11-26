@@ -711,6 +711,10 @@ function registerSettingsIpc(options = {}) {
     if (!payload || typeof payload !== "object") {
       return { status: "error", message: "settings:command payload must be { action, payload }" };
     }
+    if (payload.action === "togglePetMiniMode") {
+      const rejected = rejectUntrustedSettingsEvent(event);
+      return rejected || options.togglePetMiniMode?.() || { status: "error", message: "Mini mode is unavailable." };
+    }
     if (payload.action === "feishuApproval.saveApproverByEmail") {
       const rejected = rejectUntrustedSettingsEvent(event);
       if (rejected) return rejected;

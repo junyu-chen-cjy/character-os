@@ -4720,33 +4720,12 @@ describe("settings renderer browser environment", () => {
     }
   });
 
-  it("updates the About auto-update switch in place and blocks rapid duplicate saves", async () => {
-    const save = createDeferred();
-    const harness = loadAboutTabForTest({
-      snapshot: { autoUpdateCheck: true },
-      update: () => save.promise,
-    });
-    await new Promise((resolve) => setImmediate(resolve));
+  it("keeps the manual update check while hiding automatic checks in About", async () => {
+    const harness = loadAboutTabForTest({ snapshot: { autoUpdateCheck: true } });
+    await new Promise(resolve => setImmediate(resolve));
 
-    const autoUpdateSwitch = harness.content.querySelector(".about-auto-update-switch");
-    assert.ok(autoUpdateSwitch);
-    autoUpdateSwitch.dispatchEvent({ type: "click" });
-    autoUpdateSwitch.dispatchEvent({ type: "click" });
-    assert.deepStrictEqual(harness.updateCalls, [{ key: "autoUpdateCheck", value: false }]);
-    assert.equal(autoUpdateSwitch.classList.contains("pending"), true);
-    assert.equal(autoUpdateSwitch.getAttribute("aria-busy"), "true");
-    assert.equal(autoUpdateSwitch.getAttribute("aria-disabled"), "false");
-    assert.equal(autoUpdateSwitch.tabIndex, 0);
-
-    save.resolve({ status: "ok" });
-    await new Promise((resolve) => setImmediate(resolve));
-    assert.equal(autoUpdateSwitch.classList.contains("pending"), false);
-    assert.equal(autoUpdateSwitch.getAttribute("aria-checked"), "false");
-
-    harness.core.state.snapshot.autoUpdateCheck = true;
-    assert.equal(harness.core.tabs.about.patchInPlace({ autoUpdateCheck: true }), true);
-    assert.strictEqual(harness.content.querySelector(".about-auto-update-switch"), autoUpdateSwitch);
-    assert.equal(autoUpdateSwitch.getAttribute("aria-checked"), "true");
+    assert.ok(harness.content.querySelector(".about-check-update-btn"));
+    assert.equal(harness.content.querySelector(".about-auto-update-switch"), null);
   });
 
   it("rolls a cancelled consent switch back without a failure toast", async () => {
@@ -4771,22 +4750,6 @@ describe("settings renderer browser environment", () => {
     assert.equal(sw.getAttribute("aria-checked"), "false");
     assert.equal(sw.classList.contains("pending"), false);
     assert.equal(transient, null);
-  });
-
-  it("rolls the About auto-update switch back when persistence fails", async () => {
-    const harness = loadAboutTabForTest({
-      snapshot: { autoUpdateCheck: true },
-      update: () => Promise.resolve({ status: "error", message: "disk full" }),
-    });
-    await new Promise((resolve) => setImmediate(resolve));
-    const autoUpdateSwitch = harness.content.querySelector(".about-auto-update-switch");
-    autoUpdateSwitch.dispatchEvent({ type: "click" });
-    await new Promise((resolve) => setImmediate(resolve));
-
-    assert.equal(autoUpdateSwitch.getAttribute("aria-checked"), "true");
-    assert.equal(autoUpdateSwitch.classList.contains("pending"), false);
-    assert.equal(harness.toasts.length, 1);
-    assert.equal(harness.toasts[0].options.error, true);
   });
 
   it("shows, copies, patches, and dismisses structured update errors in About", async () => {

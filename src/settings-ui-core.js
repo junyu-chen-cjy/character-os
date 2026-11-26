@@ -103,7 +103,6 @@
       disposableScopes: new Map(),
       quotaRingDisplayMode: null,
       permissionAutomationMode: null,
-      aboutAutoUpdate: null,
       aboutUpdateStatus: null,
     },
     shortcutRecordingActionId: null,
@@ -2207,7 +2206,6 @@
     state.mountedControls.quotaAlertThresholds = null;
     state.mountedControls.permissionAutomationMode = null;
     state.mountedControls.roamArea = null;
-    state.mountedControls.aboutAutoUpdate = null;
     state.mountedControls.aboutUpdateStatus = null;
     state.mountedControls.aboutUpdateErrorDisclosure = null;
   }

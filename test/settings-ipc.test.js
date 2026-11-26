@@ -250,6 +250,7 @@ function createHarness(overrides = {}) {
     platform: overrides.platform,
     refreshDshDesktopDiscovery: overrides.refreshDshDesktopDiscovery,
     refreshWslDetection: overrides.refreshWslDetection,
+    togglePetMiniMode: overrides.togglePetMiniMode,
     checkForUpdates: overrides.checkForUpdates || ((manual) => {
       calls.push(["checkForUpdates", manual]);
       return { state: "up-to-date", version: "1.2.3" };
@@ -274,6 +275,21 @@ function createHarness(overrides = {}) {
   });
   return { ipcMain, runtime, calls, activeTheme, settingsWindow };
 }
+
+test("only the trusted Settings window can switch the pet's mini mode", async () => {
+  let toggles = 0;
+  const { ipcMain } = createHarness({
+    togglePetMiniMode: () => {
+      toggles += 1;
+      return { status: "ok" };
+    },
+  });
+  const request = { action: "togglePetMiniMode" };
+  assert.deepEqual(await ipcMain.invoke("settings:command", request), { status: "ok" });
+  ipcMain.invokeEvent = { sender: {}, senderFrame: null };
+  assert.equal((await ipcMain.invoke("settings:command", request)).status, "error");
+  assert.equal(toggles, 1);
+});
 
 test("settings IPC returns the current pet size slider context", async () => {
   const expected = { ui: 70, overMax: false, synced: false };

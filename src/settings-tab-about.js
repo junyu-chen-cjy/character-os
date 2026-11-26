@@ -466,88 +466,6 @@
       };
       applyUpdateCheckStatus(safe.updateCheckSnapshot || runtime.about.updateCheckSnapshot);
 
-      const autoUpdateRow = document.createElement("div");
-      autoUpdateRow.className = "about-info-row";
-      const autoUpdateLabelWrap = document.createElement("div");
-      autoUpdateLabelWrap.className = "about-info-label";
-      const autoUpdateLabel = document.createElement("div");
-      autoUpdateLabel.id = "settings-about-auto-update-label";
-      autoUpdateLabel.textContent = t("autoUpdateCheck");
-      const autoUpdateDesc = document.createElement("div");
-      autoUpdateDesc.id = "settings-about-auto-update-description";
-      autoUpdateDesc.className = "about-info-description";
-      autoUpdateDesc.textContent = t("autoUpdateCheckDescription");
-      autoUpdateDesc.style.opacity = "0.7";
-      autoUpdateDesc.style.fontSize = "12px";
-      autoUpdateLabelWrap.appendChild(autoUpdateLabel);
-      autoUpdateLabelWrap.appendChild(autoUpdateDesc);
-      const autoUpdateValue = document.createElement("div");
-      autoUpdateValue.className = "about-info-value";
-      let committedAutoUpdate = safe.autoUpdateCheck !== false;
-      let autoUpdatePending = false;
-      const autoUpdateControl = helpers.buildSwitch({
-        checked: committedAutoUpdate,
-        ariaLabelledBy: autoUpdateLabel.id,
-        ariaDescribedBy: autoUpdateDesc.id,
-        className: "about-auto-update-switch",
-      });
-      const autoUpdateSwitch = autoUpdateControl.element;
-
-      function paintAutoUpdate(value, pending = autoUpdatePending) {
-        autoUpdateControl.setState({ checked: value, pending });
-      }
-
-      function syncAutoUpdateFromSnapshot() {
-        const snapshotHasValue = state.snapshot
-          && Object.prototype.hasOwnProperty.call(state.snapshot, "autoUpdateCheck");
-        committedAutoUpdate = snapshotHasValue
-          ? state.snapshot.autoUpdateCheck !== false
-          : runtime.about.infoCache.autoUpdateCheck !== false;
-        runtime.about.infoCache.autoUpdateCheck = committedAutoUpdate;
-        autoUpdatePending = false;
-        paintAutoUpdate(committedAutoUpdate, false);
-      }
-
-      function toggleAutoUpdate() {
-        if (autoUpdatePending || !window.settingsAPI || typeof window.settingsAPI.update !== "function") return;
-        const previous = committedAutoUpdate;
-        const next = !committedAutoUpdate;
-        committedAutoUpdate = next;
-        autoUpdatePending = true;
-        runtime.about.infoCache.autoUpdateCheck = next;
-        paintAutoUpdate(next, true);
-        Promise.resolve(window.settingsAPI.update("autoUpdateCheck", next))
-          .then((result) => {
-            if (!result || result.status !== "ok") {
-              committedAutoUpdate = previous;
-              runtime.about.infoCache.autoUpdateCheck = previous;
-              ops.showToast((result && result.message) || t("toastSaveFailed"), { error: true });
-            }
-          })
-          .catch((err) => {
-            committedAutoUpdate = previous;
-            runtime.about.infoCache.autoUpdateCheck = previous;
-            const message = err && err.message ? err.message : "unknown error";
-            ops.showToast(t("toastSaveFailed") + message, { error: true });
-          })
-          .finally(() => {
-            autoUpdatePending = false;
-            if (document.body.contains(autoUpdateSwitch)) paintAutoUpdate(committedAutoUpdate, false);
-          });
-      }
-
-      autoUpdateControl.setOnToggle(toggleAutoUpdate);
-      state.mountedControls.aboutAutoUpdate = {
-        control: autoUpdateControl,
-        element: autoUpdateSwitch,
-        syncFromSnapshot: syncAutoUpdateFromSnapshot,
-      };
-      paintAutoUpdate(committedAutoUpdate, false);
-      autoUpdateValue.appendChild(autoUpdateSwitch);
-      autoUpdateRow.appendChild(autoUpdateLabelWrap);
-      autoUpdateRow.appendChild(autoUpdateValue);
-      infoSection.appendChild(autoUpdateRow);
-
       if (safe.repoUrl) {
         infoSection.appendChild(buildAboutLinkRow(
           t("aboutRepositoryLabel"),
@@ -592,15 +510,6 @@
     i18n = core.i18n;
     core.tabs.about = {
       render,
-      patchInPlace(changes) {
-        if (!changes || Object.keys(changes).some((key) => key !== "autoUpdateCheck")) return false;
-        if (!Object.prototype.hasOwnProperty.call(changes, "autoUpdateCheck")) return false;
-        const control = state.mountedControls.aboutAutoUpdate;
-        if (!control || !document.body.contains(control.element)) return false;
-        runtime.about.infoCache.autoUpdateCheck = changes.autoUpdateCheck !== false;
-        control.syncFromSnapshot();
-        return true;
-      },
       applyUpdateCheckStatus(snapshot) {
         runtime.about.updateCheckSnapshot = normalizeUpdateCheckSnapshot(snapshot);
         const control = state.mountedControls.aboutUpdateStatus;

@@ -4955,33 +4955,6 @@ const _menuCtx = {
   set hideBubbles(v) { _settingsController.applyCommand("setAllBubblesHidden", { hidden: !!v }).catch((err) => {
     console.warn("Clawd: setAllBubblesHidden failed:", err && err.message);
   }); },
-  get permissionAutomationMode() {
-    return _settingsController.get("permissionAutomationMode") || "off";
-  },
-  isPermissionAutomationWarningDismissed(mode) {
-    const key = mode === "auto-tools"
-      ? "permissionAutomationAutoToolsWarningDismissed"
-      : (mode === "unattended"
-        ? "permissionAutomationUnattendedWarningDismissed"
-        : null);
-    return key ? _settingsController.get(key) === true : false;
-  },
-  setPermissionAutomationMode(mode, options = {}) {
-    return _settingsController.applyCommand("setPermissionAutomationMode", {
-      mode,
-      confirmed: options.confirmed === true,
-      suppressFutureConfirmation: options.suppressFutureConfirmation === true,
-    }).catch((err) => {
-      console.warn("Clawd: setPermissionAutomationMode failed:", err && err.message);
-      return { status: "error", message: err && err.message };
-    });
-  },
-  confirmPermissionAutomation: (payload) => (
-    permissionAutomationConfirmationRuntime.confirmPermissionAutomation(payload)
-  ),
-  showPermissionAutomationError: (payload) => (
-    permissionAutomationConfirmationRuntime.showPermissionAutomationError(payload)
-  ),
   get soundMuted() { return soundMuted; },
   set soundMuted(v) { _settingsController.applyUpdate("soundMuted", v); },
   get soundVolume() { return soundVolume; },
@@ -5012,16 +4985,9 @@ const _menuCtx = {
     return meetingMode.start(minutes);
   },
   endMeetingMode: () => meetingMode.end("menu"),
-  enterMiniViaMenu: () => {
-    if (!disableMiniModeCached) enterMiniViaMenu();
-  },
-  exitMiniMode: () => exitMiniMode(),
-  getDisableMiniMode: () => disableMiniModeCached,
   getMiniMode: () => _mini.getMiniMode(),
   getMiniTransitioning: () => _mini.getMiniTransitioning(),
   miniHandleResize: (sizeKey) => _mini.handleResize(sizeKey),
-  checkForUpdates: (...args) => checkForUpdates(...args),
-  getUpdateMenuItem: () => getUpdateMenuItem(),
   openDashboard: () => showDashboard(),
   openChat: chatWindow.open,
   launchClaudeSession: (mode, cwd, sessionId) => launchClaudeSession(mode, cwd, sessionId),
@@ -5397,30 +5363,11 @@ const {
   checkForUpdates,
   getUpdateCheckSnapshot,
   clearUpdateError,
-  getUpdateMenuItem,
-  getUpdateMenuLabel,
   reconcilePendingOnStartup,
   onSilentModeExit: updaterOnSilentModeExit,
-  startUpdateScheduler,
-  stopUpdateScheduler,
 } = _updater;
 // Now that updater is constructed, point the forward hook at it.
 notifyUpdaterSilentExit = () => { try { updaterOnSilentModeExit(); } catch {} };
-
-// #329: react to the autoUpdateCheck toggle in real time so users see
-// the scheduler start/stop without restarting Clawd.
-try {
-  _settingsController.subscribeKey("autoUpdateCheck", (value) => {
-    try {
-      if (value === false) stopUpdateScheduler();
-      else startUpdateScheduler();
-    } catch (err) {
-      updateLog(`scheduler toggle failed: ${err && err.message}`);
-    }
-  });
-} catch (err) {
-  updateLog(`scheduler subscribeKey failed: ${err && err.message}`);
-}
 
 // ── Doctor tab IPC ──
 const { registerDoctorIpc } = require("./doctor-ipc");
@@ -5555,6 +5502,20 @@ const settingsIpcRuntime = registerSettingsIpc({
   getSettingsWindow,
   getActiveTheme: () => getActiveTheme(),
   getLang: () => lang,
+  togglePetMiniMode: () => {
+    if (!win || win.isDestroyed() || petWindowRuntime.isPetEffectivelyHidden() || _mini.getMiniTransitioning()) {
+      return { status: "error", message: "The pet is hidden or changing modes." };
+    }
+    if (_mini.getMiniMode()) {
+      exitMiniMode();
+    } else {
+      if (disableMiniModeCached || doNotDisturb || themeRuntime.getActiveThemeCapabilities()?.miniMode !== true) {
+        return { status: "error", message: "Mini mode is unavailable with the current pet settings or theme." };
+      }
+      enterMiniViaMenu();
+    }
+    return { status: "ok" };
+  },
   roamFenceSettings,
   roamFencePicker: roamFencePickerRuntime,
   settingsSizePreviewSession,
@@ -6512,8 +6473,6 @@ if (!gotTheLock) {
     catch (err) { console.warn("Clawd: discord presence startup failed:", err && err.message); }
     queueFeishuApprovalSync("startup");
     createWindow();
-    try { recapRuntime.start(); }
-    catch (err) { console.warn("Clawd: local recap startup failed:", err && err.code ? err.code : "storage-error"); }
     // nativeTheme reads are only used to pick an appearance, so subscribing
     // after the pet window exists keeps startup free of extra reloads. The
     // first did-finish-load repeats the resolution once because the value
@@ -6599,15 +6558,6 @@ if (!gotTheLock) {
     if (shouldOpenSettingsWindowFromArgv(process.argv)) {
       settingsWindowRuntime.open();
     }
-    // First-run onboarding: anyone who has never seen the tutorial gets it once.
-    // `tutorialSeen` is persisted but deliberately NOT migration-backfilled, so
-    // existing users who update also see it once on their next launch, then the
-    // flag flips to true forever (any dismissal counts). See prefs.js SCHEMA.
-    try {
-      if (!_settingsController.get("tutorialSeen")) _tutorial.open();
-    } catch (err) {
-      console.warn("Clawd: failed to open first-run tutorial:", err && err.message);
-    }
     codexPetMain.enqueueImportUrlsFromArgv(process.argv);
     codexPetMain.flushPendingImportUrls().catch((err) => {
       console.warn("Clawd: Codex Pet import queue failed:", err && err.message);
@@ -6632,14 +6582,9 @@ if (!gotTheLock) {
       console.warn("Clawd: failed to auto-install terminal-focus extension:", err.message);
     }
 
-    // Auto-updater: setup event handlers (user triggers check via tray menu)
-    setupAutoUpdater();
-    // #329: reconcile any stale pending-update entry (e.g. user installed
-    // out-of-band on macOS) and start the background scheduler. Both are
-    // safe in dev mode — reconcile is a no-op when nothing is pending,
-    // and startUpdateScheduler() short-circuits on !app.isPackaged.
+    // Keep manual updates available in Settings and reconcile prior downloads.
+    setupAutoUpdater({ checkNativeInstallerOnStartup: false });
     try { reconcilePendingOnStartup(); } catch (err) { updateLog(`reconcile failed: ${err && err.message}`); }
-    try { startUpdateScheduler(); } catch (err) { updateLog(`scheduler start failed: ${err && err.message}`); }
 
     // Deferred so any startup Codex hook sync has settled before we read the
     // on-disk hook state; unref'd so it never blocks a fast quit.
@@ -6676,7 +6621,6 @@ if (!gotTheLock) {
     // #525: release the IVirtualDesktopManager COM ref and pay back our own
     // CoInitializeEx count (see win-cloak-recovery.js dispose()).
     _cloakInspector.dispose();
-    try { stopUpdateScheduler(); } catch {}
     releasePowerSaveBlocker();
     flushRuntimeStateToPrefs();
     globalShortcut.unregisterAll();

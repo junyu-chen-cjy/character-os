@@ -17,8 +17,7 @@ const SIDEBAR_TABS = [
   { id: "theme", labelKey: "sidebarTheme", available: true, groupStart: true },
   { id: "animOverrides", labelKey: "sidebarAnimOverrides", available: true },
   { id: "shortcuts", labelKey: "sidebarShortcuts", available: true },
-  { id: "recap", labelKey: "sidebarRecap", available: true, groupStart: true },
-  { id: "about", labelKey: "sidebarAbout", available: true },
+  { id: "about", labelKey: "sidebarAbout", available: true, groupStart: true },
 ];
 
 function getTabIcon(tabId) {
@@ -113,14 +112,13 @@ globalThis.ClawdSettingsTabAnimOverrides.init(core);
 globalThis.ClawdSettingsTabShortcuts.init(core);
 if (globalThis.ClawdSettingsTabTelegramApproval) globalThis.ClawdSettingsTabTelegramApproval.init(core);
 if (globalThis.ClawdSettingsTabDiscordPresence) globalThis.ClawdSettingsTabDiscordPresence.init(core);
-if (globalThis.ClawdSettingsTabRecap) globalThis.ClawdSettingsTabRecap.init(core);
 globalThis.ClawdSettingsTabAbout.init(core);
 if (globalThis.ClawdSettingsTabRemoteSsh) globalThis.ClawdSettingsTabRemoteSsh.init(core);
 if (globalThis.ClawdSettingsTabMobile) globalThis.ClawdSettingsTabMobile.init(core);
 
 core.ops.restoreNavigationState();
 function selectRequestedTab(tab) {
-  if (tab === "recap" || tab === "sessions") {
+  if (tab === "sessions") {
     core.ops.selectTab(tab, { persist: false });
   }
 }
