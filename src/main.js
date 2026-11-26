@@ -4918,6 +4918,11 @@ function showResumeInput(t) {
   });
 }
 
+const chatWindow = require("./chat-window").createChatWindow({
+  app, BrowserWindow, ipcMain, nativeTheme, safeStorage, shell,
+});
+app.on("before-quit", chatWindow.stop);
+
 const _menuCtx = {
   get win() { return win; },
   get petAlwaysOnTop() { return getPetAlwaysOnTopEffective(); },
@@ -5018,6 +5023,7 @@ const _menuCtx = {
   checkForUpdates: (...args) => checkForUpdates(...args),
   getUpdateMenuItem: () => getUpdateMenuItem(),
   openDashboard: () => showDashboard(),
+  openChat: chatWindow.open,
   launchClaudeSession: (mode, cwd, sessionId) => launchClaudeSession(mode, cwd, sessionId),
   newSessionWithFolder: async (t) => {
     const parent = win && !win.isDestroyed() ? win : null;

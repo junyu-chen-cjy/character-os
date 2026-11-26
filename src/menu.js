@@ -318,6 +318,7 @@ module.exports = function initMenu(ctx) {
     // Dashboard + the danger auto-approve toggle (danger last, as in the
     // context menu).
     const workGroup = [
+      ...(ctx.openChat ? [{ label: t("openChat"), click: ctx.openChat }] : []),
       {
         label: t("openDashboard"),
         click: () => {
@@ -634,6 +635,7 @@ module.exports = function initMenu(ctx) {
     ];
 
     const workGroup = [
+      ...(ctx.openChat ? [{ label: t("openChat"), click: ctx.openChat }] : []),
       {
         label: t("openDashboard"),
         click: () => {
