@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Notification, screen, ipcMain, globalShortcut, nativeTheme, dialog, shell, nativeImage, powerSaveBlocker, powerMonitor, clipboard, safeStorage } = require("electron");
+const { app, BrowserWindow, Notification, screen, ipcMain, globalShortcut, nativeTheme, dialog, shell, nativeImage, powerSaveBlocker, powerMonitor, clipboard, safeStorage, systemPreferences } = require("electron");
 const { maybeRunPackageKoffiSmoke } = require("./package-koffi-smoke");
 if (maybeRunPackageKoffiSmoke({ app, BrowserWindow })) {
   return;
@@ -5233,8 +5233,20 @@ function buildWorkspaceContextPayload() {
   };
 }
 
+const { GEMINI_ANTIGRAVITY_QUOTA_SOURCE, createAntigravityUsageRefresh } = require("./antigravity-usage-reader");
+const refreshGeminiAntigravityQuota = isMac ? createAntigravityUsageRefresh({
+  isTrusted: () => systemPreferences.isTrustedAccessibilityClient(false),
+  publish: (antigravityQuota) => _state.updateAccountQuota(GEMINI_ANTIGRAVITY_QUOTA_SOURCE, {
+    displayHost: "Gemini App",
+    antigravityQuota,
+  }),
+}) : null;
+
 async function runWorkspaceActionFromDashboard(payload) {
   const type = typeof payload.type === "string" ? payload.type : "";
+  if (type === "read-gemini-antigravity-quota") {
+    return refreshGeminiAntigravityQuota?.() || { status: "unsupported" };
+  }
   if (type === "open-command") {
     chatWindow.open();
     return { status: "ok" };

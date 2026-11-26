@@ -50,6 +50,10 @@ const wsBtnAntigravityEl = document.getElementById("wsBtnAntigravity");
 const wsBtnSettingsEl = document.getElementById("wsBtnSettings");
 const wsLblSettingsEl = document.getElementById("wsLblSettings");
 const wsQuotasPanelEl = document.getElementById("wsQuotasPanel");
+const wsReadGeminiQuota = document.getElementById("wsReadGeminiQuota");
+const wsGeminiQuotaStatus = document.getElementById("wsGeminiQuotaStatus");
+let geminiQuotaStatus = "quotaReadInstructions";
+let readingGeminiQuota = false;
 const wsQuotaTitleEl = document.getElementById("wsQuotaTitle");
 const wsQuotaMissingRowsEl = document.getElementById("wsQuotaMissingRows");
 const wsQuotaFallbackEl = document.getElementById("wsQuotaFallback");
@@ -64,6 +68,16 @@ let lastWorkspaceRailSig = "";
 
 const WS_STRINGS = {
   en: {
+    quotaReadGemini: "Read Gemini Antigravity quota",
+    quotaReadInstructions: "In Gemini Antigravity, reopen the model picker → View Usage and wait for it to refresh.",
+    quotaReadOk: "Antigravity quota read from Gemini.",
+    quotaReadAt: "Read {time}",
+    quotaPermission: "Grant Character OS access in macOS Privacy & Security → Accessibility.",
+    quotaOpenGemini: "Open Gemini App in Antigravity mode first.",
+    quotaRefreshing: "Wait for View Usage to finish refreshing.",
+    quotaUnrecognized: "No supported quota figures were exposed by the open panel. Previous readings are retained.",
+    quotaTryLater: "Wait a few seconds and try again.",
+    quotaReadFailed: "Unable to read Gemini Antigravity quota.",
     workspaceTitle: "Workspace",
     navOverview: "Overview",
     navSessions: "Sessions",
@@ -92,6 +106,16 @@ const WS_STRINGS = {
     remainingShort: "{pct}% left",
   },
   zh: {
+    quotaReadGemini: "读取 Gemini Antigravity 额度",
+    quotaReadInstructions: "请在 Gemini 的 Antigravity 模型菜单重新打开 View Usage，等刷新完成后读取。",
+    quotaReadOk: "已从 Gemini 读取 Antigravity 额度。",
+    quotaReadAt: "读取于 {time}",
+    quotaPermission: "请在 macOS「隐私与安全性 → 辅助功能」中授权 Character OS。",
+    quotaOpenGemini: "请先打开 Gemini App 并进入 Antigravity。",
+    quotaRefreshing: "请等 View Usage 刷新完成。",
+    quotaUnrecognized: "该面板未提供可识别的额度数据。已有读数仍保留。",
+    quotaTryLater: "请稍等几秒再试。",
+    quotaReadFailed: "无法读取 Gemini Antigravity 额度。",
     workspaceTitle: "工作台",
     navOverview: "总览",
     navSessions: "会话",
@@ -904,13 +928,13 @@ function isExpiredBucket(bucket) {
   return Number.isFinite(bucket.resetAt) && bucket.resetAt <= Date.now();
 }
 
-function liveBucket(group, field) {
+function liveBucket(group, field, discardExpired = false) {
   const bucket = group && group[field];
   if (!bucket || typeof bucket !== "object") return null;
-  // Window reset on wall clock: render as 0% (nothing reported since the
-  // reset) rather than the pre-reset high or a vanished bar.
+  // Preserve the other providers' existing reset display. Antigravity rows
+  // need a fresh observation before showing any post-reset balance.
   if (bucket.expired === true || isExpiredBucket(bucket)) {
-    return { ...bucket, usedPercent: 0, expired: true };
+    return discardExpired ? null : { ...bucket, usedPercent: 0, expired: true };
   }
   return bucket;
 }
@@ -961,7 +985,7 @@ function buildQuotaSourceHeader(sourceEntry, providerEntry, baseLabel, providerK
   // currently reporting source. A lone default source stays compact.
   const namedLocalCodex = typeof sourceEntry.sourceKey === "string"
     && sourceEntry.sourceKey.startsWith("codex-profile:");
-  if (multiSource || namedLocalCodex) {
+  if (multiSource || namedLocalCodex || sourceEntry.sourceKey === "gemini-app-antigravity") {
     let localLabel = t("dashboardQuotaSourceLocal");
     if (sourceEntry.hasExtraCodexProfile) {
       if (providerKey === "codexQuota") localLabel = t("dashboardQuotaSectionCodex");
@@ -975,7 +999,9 @@ function buildQuotaSourceHeader(sourceEntry, providerEntry, baseLabel, providerK
   // Fallback covers snapshots that predate lastSeenAt.
   const seenAt = Number(providerEntry.lastSeenAt ?? providerEntry.updatedAt ?? 0);
   const age = Date.now() - seenAt;
-  if (Number.isFinite(age) && age > quotaStaleAfterMs(providerKey)) {
+  if (providerKey === "antigravityQuota" && Number.isFinite(seenAt) && seenAt > 0) {
+    parts.push(wt("quotaReadAt").replace("{time}", new Date(seenAt).toLocaleString(i18nPayload?.lang)));
+  } else if (Number.isFinite(age) && age > quotaStaleAfterMs(providerKey)) {
     const asOf = formatAsOf(seenAt);
     if (asOf) parts.push(asOf);
   }
@@ -1131,14 +1157,14 @@ function renderQuotaSummary(snapshot) {
     antigravityRows.push(
       buildQuotaGroupRow(
         buildQuotaSourceHeader(source, provider, t("dashboardQuotaGroupGemini"), "antigravityQuota"),
-        liveBucket(group, "geminiFiveHour"),
-        liveBucket(group, "geminiWeekly"),
+        liveBucket(group, "geminiFiveHour", true),
+        liveBucket(group, "geminiWeekly", true),
         "antigravityQuota"
       ),
       buildQuotaGroupRow(
         buildQuotaSourceHeader(source, provider, t("dashboardQuotaGroupThirdParty"), "antigravityQuota"),
-        liveBucket(group, "thirdPartyFiveHour"),
-        liveBucket(group, "thirdPartyWeekly"),
+        liveBucket(group, "thirdPartyFiveHour", true),
+        liveBucket(group, "thirdPartyWeekly", true),
         "antigravityQuota"
       )
     );
@@ -2609,6 +2635,7 @@ function summarizeProviderQuota(accountQuota, providerKey, fields, now) {
       const raw = group[field];
       if (!raw || typeof raw !== "object") continue;
       const expired = raw.expired === true || (Number.isFinite(raw.resetAt) && raw.resetAt <= now);
+      if (expired && providerKey === "antigravityQuota") continue;
       const used = expired ? 0 : Math.max(0, Math.min(100, Number(raw.usedPercent) || 0));
       const remaining = Math.max(0, Math.min(100, Math.round(100 - used)));
       const resetStyle = quotaResetStyle(raw, Number(raw.windowMinutes) >= 1440 ? "date" : "countdown");
@@ -2770,6 +2797,16 @@ function renderWorkspaceChrome(sessions) {
   if (wsQuotasPanelEl) wsQuotasPanelEl.hidden = !showQuotasDetail;
 
   if (wsQuotaTitleEl) wsQuotaTitleEl.textContent = wt("quotasTitle");
+  const canReadGemini = workspaceCtx?.system?.platform === "darwin";
+  if (wsReadGeminiQuota) {
+    wsReadGeminiQuota.hidden = !canReadGemini;
+    wsReadGeminiQuota.disabled = readingGeminiQuota;
+    wsReadGeminiQuota.textContent = wt("quotaReadGemini");
+  }
+  if (wsGeminiQuotaStatus) {
+    wsGeminiQuotaStatus.hidden = !canReadGemini;
+    wsGeminiQuotaStatus.textContent = wt(geminiQuotaStatus);
+  }
   if (wsRuntimeTitleEl) wsRuntimeTitleEl.textContent = wt("runtimeTitle");
   if (wsBtnManageAgentsEl) wsBtnManageAgentsEl.textContent = wt("manageAgents");
 
@@ -2865,6 +2902,31 @@ function initWorkspaceControls() {
       const next = btn.getAttribute("data-ws-view");
       if (next && next !== workspaceView) {
         workspaceView = next;
+        render({ force: true });
+      }
+    });
+  }
+
+  if (wsReadGeminiQuota) {
+    wsReadGeminiQuota.addEventListener("click", async () => {
+      if (readingGeminiQuota || typeof window.dashboardAPI?.workspaceAction !== "function") return;
+      readingGeminiQuota = true;
+      wsReadGeminiQuota.disabled = true;
+      try {
+        const result = await window.dashboardAPI.workspaceAction({ type: "read-gemini-antigravity-quota" });
+        geminiQuotaStatus = {
+          ok: "quotaReadOk",
+          "permission-required": "quotaPermission",
+          "open-gemini": "quotaOpenGemini",
+          "open-usage": "quotaReadInstructions",
+          refreshing: "quotaRefreshing",
+          unrecognized: "quotaUnrecognized",
+          "try-later": "quotaTryLater",
+        }[result?.status] || "quotaReadFailed";
+      } catch {
+        geminiQuotaStatus = "quotaReadFailed";
+      } finally {
+        readingGeminiQuota = false;
         render({ force: true });
       }
     });

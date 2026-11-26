@@ -38,6 +38,8 @@ const { CODEX_QUOTA_FIELDS } = require("../hooks/codex-rate-limits");
 const { DEEPSEEK_QUOTA_FIELDS } = require("./deepseek-balance-normalizer");
 const { KIMI_QUOTA_FIELDS } = require("./kimi-quota-normalizer");
 
+const { GEMINI_ANTIGRAVITY_QUOTA_SOURCE } = require("./antigravity-usage-reader");
+
 const QUOTA_PROVIDER_FIELDS = {
   antigravityQuota: ANTIGRAVITY_QUOTA_FIELDS,
   claudeQuota: CLAUDE_QUOTA_FIELDS,
@@ -357,12 +359,13 @@ function createAccountQuotaStore(options = {}) {
       const group = normalizeQuotaGroup(quotas[providerKey], QUOTA_PROVIDER_FIELDS[providerKey]);
       if (!group) continue;
       const existing = record && record[providerKey];
-      const windowAwareCodex = isWindowAwareCodexProvider(providerKey) && hasReportedWindow(group);
+      const isCompleteReport = (isWindowAwareCodexProvider(providerKey) && hasReportedWindow(group))
+        || (providerKey === "antigravityQuota" && sourceKey === GEMINI_ANTIGRAVITY_QUOTA_SOURCE);
       // A window-aware Codex payload is a complete rate_limits snapshot. A
       // newer single 7-day primary must retire the old short-window bucket,
       // not merge with it. Reject an older complete snapshot at provider
       // scope before it can relocate/erase a newer bucket in another slot.
-      if (windowAwareCodex && existing) {
+      if (isCompleteReport && existing) {
         const incomingCapture = newestCapture(group);
         const existingCapture = newestCapture(existing.group);
         if (incomingCapture !== null && existingCapture !== null
@@ -379,7 +382,8 @@ function createAccountQuotaStore(options = {}) {
       // report must not evict a sibling that is still valid. Window-aware
       // Codex reports are the exception because rate_limits is a complete
       // snapshot and omission is how a removed service-side window appears.
-      const merged = windowAwareCodex
+      // The open Gemini Usage panel is a separate complete observation too.
+      const merged = isCompleteReport
         ? observed
         : (existing ? { ...existing.group, ...observed } : observed);
       if (!record) {

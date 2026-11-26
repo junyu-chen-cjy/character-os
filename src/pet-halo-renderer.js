@@ -101,15 +101,17 @@
     return t("resetM").replace("{m}", m);
   }
 
-  function normalizeBucket(group, field, fallbackWin, now) {
+  function normalizeBucket(group, field, fallbackWin, now, discardExpired = false) {
     const raw = group && group[field];
     if (!raw || typeof raw !== "object") return null;
     const expired = raw.expired === true || (Number.isFinite(raw.resetAt) && raw.resetAt <= now);
+    if (expired && discardExpired) return null;
     const used = expired ? 0 : Math.max(0, Math.min(100, Number(raw.usedPercent) || 0));
     const remaining = Math.max(0, Math.min(100, Math.round(100 - used)));
     return {
       used,
       remaining,
+      lastSeenAt: Number(raw.lastSeenAt) || 0,
       windowLabel: fallbackWin,
       resetLabel: expired ? "" : formatReset(raw.resetAt, raw.windowMinutes),
     };
@@ -142,10 +144,10 @@
       if (src.antigravityQuota && src.antigravityQuota.group) {
         const g = src.antigravityQuota.group;
         const chosen = pickMostPressured([
-          normalizeBucket(g, "geminiFiveHour", "5h", now),
-          normalizeBucket(g, "geminiWeekly", "7d", now),
-          normalizeBucket(g, "thirdPartyFiveHour", "5h", now),
-          normalizeBucket(g, "thirdPartyWeekly", "7d", now),
+          normalizeBucket(g, "geminiFiveHour", "5h", now, true),
+          normalizeBucket(g, "geminiWeekly", "7d", now, true),
+          normalizeBucket(g, "thirdPartyFiveHour", "5h", now, true),
+          normalizeBucket(g, "thirdPartyWeekly", "7d", now, true),
         ]);
         if (chosen && (!agyBest || chosen.used > agyBest.used)) agyBest = chosen;
       }
@@ -239,6 +241,9 @@
       readout.className = "quota-readout";
 
       if (item.bucket) {
+        if (item.id === "antigravity" && item.bucket.lastSeenAt) {
+          row.title = new Date(item.bucket.lastSeenAt).toLocaleString();
+        }
         const sev = severityForUsed(item.bucket.used);
         const pct = document.createElement("span");
         pct.className = `quota-pct${sev ? ` ${sev}` : ""}`;
