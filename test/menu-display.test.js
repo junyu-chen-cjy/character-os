@@ -536,6 +536,19 @@ describe("menu dashboard action", () => {
   });
 });
 
+it("opens the chat window from the pet context menu", () => {
+  const initMenu = loadMenuWithElectron({
+    app: {},
+    Menu: { buildFromTemplate: template => ({ template }) },
+    screen: { getAllDisplays: () => [] },
+  });
+  let calls = 0;
+  const ctx = buildBaseCtx({ openChat: () => { calls += 1; } });
+  initMenu(ctx).buildContextMenu();
+  ctx.contextMenu.template.find(item => item.label === "Open Chat").click();
+  assert.equal(calls, 1);
+});
+
 it("opens macOS Agent apps from the pet menu and reports a launch failure", () => {
   const calls = [];
   const errors = [];

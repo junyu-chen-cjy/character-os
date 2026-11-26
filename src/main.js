@@ -6645,6 +6645,7 @@ if (!gotTheLock) {
     // on-disk hook state; unref'd so it never blocks a fast quit.
     const codexHookNudgeTimer = setTimeout(maybeNudgeCodexHookHealth, 4000);
     if (codexHookNudgeTimer && typeof codexHookNudgeTimer.unref === "function") codexHookNudgeTimer.unref();
+    if (process.argv.includes("--open-chat")) chatWindow.open();
   });
 
   app.on("before-quit", (event) => {
