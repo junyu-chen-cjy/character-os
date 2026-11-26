@@ -72,8 +72,6 @@ const quickModeApi = QUICK_MODE_SUPPORTED ? {
 contextBridge.exposeInMainWorld("dashboardAPI", {
   getSnapshot: () => ipcRenderer.invoke("dashboard:get-snapshot"),
   getI18n: () => ipcRenderer.invoke("dashboard:get-i18n"),
-  getKimiQuotaStatus: () => ipcRenderer.invoke("dashboard:get-kimi-quota-status"),
-  refreshKimiQuota: () => ipcRenderer.invoke("dashboard:refresh-kimi-quota"),
   getWorkspaceContext: () => ipcRenderer.invoke("dashboard:get-workspace-context"),
   workspaceAction: (payload) => ipcRenderer.invoke("dashboard:workspace-action", payload),
   focusSession: (sessionId) => ipcRenderer.send("dashboard:focus-session", sessionId),
