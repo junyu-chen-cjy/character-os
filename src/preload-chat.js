@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld("chat", {
   stop: () => ipcRenderer.invoke("chat:stop"),
   saveModel: model => ipcRenderer.invoke("chat:save-model", model),
   openLink: url => ipcRenderer.invoke("chat:open-link", url),
+  confirmTool: payload => ipcRenderer.invoke("chat:confirm-tool", payload),
+  openFile: payload => ipcRenderer.invoke("chat:open-file", payload),
   resize: height => ipcRenderer.send("chat:resize", height),
   dismiss: () => ipcRenderer.send("chat:dismiss"),
   blurred: () => ipcRenderer.send("chat:blurred"),

@@ -4639,10 +4639,32 @@ function showResumeInput(t) {
   });
 }
 
+const { createFileTools } = require("./personal-agent-files");
+const { createAgentTools } = require("./personal-agent-tools");
+
+const personalAgentTools = {
+  ...createFileTools({
+    openPathFn: (targetPath) => shell.openPath(targetPath),
+    showItemInFolderFn: (targetPath) => shell.showItemInFolder(targetPath),
+  }),
+  ...createAgentTools({
+    getSessionSnapshot: () => _state.buildSessionSnapshot(),
+    getPendingPermissions: () => pendingPermissions,
+    listResumableSessions: () => (
+      typeof sessionHistoryRuntime !== "undefined" && sessionHistoryRuntime
+        ? sessionHistoryRuntime.getHistory()
+        : { sessions: [] }
+    ),
+    focusSession: (sessionId, options) => focusDashboardSession(sessionId, options),
+    isAccessibilityTrusted: () => (isMac ? systemPreferences.isTrustedAccessibilityClient(false) : false),
+  }),
+};
+
 const chatWindow = require("./chat-window").createChatWindow({
   app, BrowserWindow, ipcMain, nativeTheme, safeStorage, shell, screen,
   getLang: () => lang,
   isAppQuitting: () => isQuitting,
+  toolsRegistry: personalAgentTools,
 });
 app.on("before-quit", chatWindow.stop);
 

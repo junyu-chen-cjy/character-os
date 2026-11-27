@@ -36,6 +36,22 @@ const STRINGS = {
     cancel: "Cancel",
     save: "Save",
     unreachable: "Could not reach the command window.",
+    stepSearchingFiles: "Searching files…",
+    stepFoundFiles: "Found {n} file(s)",
+    stepOpeningFile: "Opening file…",
+    stepOpenedFile: "Opened {name}",
+    stepLocatingAgents: "Locating Agent sessions…",
+    stepFoundSessions: "Checked {n} Agent session(s)",
+    stepReadingQuota: "Checking AI quotas…",
+    stepReadQuota: "Checked AI quotas",
+    stepSendingAgent: "Sending task to Agent…",
+    stepConfirmTitle: "Confirm Agent delegation",
+    stepConfirmSend: "Send",
+    stepTaskSent: "Task sent (awaiting Agent start)",
+    stepCancelled: "Cancelled",
+    stepFailed: "Failed",
+    stepOpenBtn: "Open",
+    stepToolsUnsupported: "This model does not support tool calling; switched to plain chat.",
   },
   zh: {
     windowTitle: "Character OS · 指令",
@@ -72,6 +88,22 @@ const STRINGS = {
     cancel: "取消",
     save: "保存",
     unreachable: "无法连接指令窗口。",
+    stepSearchingFiles: "正在查找文件…",
+    stepFoundFiles: "找到 {n} 个结果",
+    stepOpeningFile: "正在打开文件…",
+    stepOpenedFile: "已打开 {name}",
+    stepLocatingAgents: "正在定位 Agent 会话…",
+    stepFoundSessions: "已读取 {n} 个 Agent 会话",
+    stepReadingQuota: "正在读取服务额度…",
+    stepReadQuota: "已读取服务额度",
+    stepSendingAgent: "正在向 Agent 发送任务…",
+    stepConfirmTitle: "等待确认 · 发送任务",
+    stepConfirmSend: "确认发送",
+    stepTaskSent: "任务已发送（等待观察执行）",
+    stepCancelled: "已取消",
+    stepFailed: "执行失败",
+    stepOpenBtn: "打开",
+    stepToolsUnsupported: "当前模型不支持工具调用，已降级为普通对话。",
   },
   "zh-TW": {
     windowTitle: "Character OS · 指令",
@@ -108,6 +140,22 @@ const STRINGS = {
     cancel: "取消",
     save: "儲存",
     unreachable: "無法連接指令視窗。",
+    stepSearchingFiles: "正在尋找檔案…",
+    stepFoundFiles: "找到 {n} 個結果",
+    stepOpeningFile: "正在開啟檔案…",
+    stepOpenedFile: "已開啟 {name}",
+    stepLocatingAgents: "正在定位 Agent 工作階段…",
+    stepFoundSessions: "已讀取 {n} 個 Agent 工作階段",
+    stepReadingQuota: "正在讀取服務額度…",
+    stepReadQuota: "已讀取服務額度",
+    stepSendingAgent: "正在向 Agent 傳送任務…",
+    stepConfirmTitle: "等待確認 · 傳送任務",
+    stepConfirmSend: "確認傳送",
+    stepTaskSent: "任務已傳送（等待觀察執行）",
+    stepCancelled: "已取消",
+    stepFailed: "執行失敗",
+    stepOpenBtn: "開啟",
+    stepToolsUnsupported: "目前模型不支援工具呼叫，已降級為一般對話。",
   },
 };
 
@@ -222,6 +270,136 @@ function isPristine() {
   return view !== "model" && !state?.generating;
 }
 
+function stepHeadline(step) {
+  if (step.tool === "system" && step.code === "tools-unsupported") return t("stepToolsUnsupported");
+  if (step.status === "confirming") return t("stepConfirmTitle");
+  if (step.status === "cancelled") return t("stepCancelled");
+  if (step.status === "error") return `${t("stepFailed")}`;
+  if (step.tool === "search_files") {
+    return step.status === "running"
+      ? t("stepSearchingFiles")
+      : t("stepFoundFiles").replace("{n}", String(step.totalFound ?? (step.files?.length || 0)));
+  }
+  if (step.tool === "open_file") {
+    return step.status === "running"
+      ? t("stepOpeningFile")
+      : t("stepOpenedFile").replace("{name}", step.file?.name || "");
+  }
+  if (step.tool === "list_agent_sessions" || step.tool === "get_agent_status") {
+    if (step.status === "running") return t("stepLocatingAgents");
+    const count = step.tool === "list_agent_sessions"
+      ? (step.liveCount || 0)
+      : (step.sessionCount || 0);
+    return t("stepFoundSessions").replace("{n}", String(count));
+  }
+  if (step.tool === "get_quota") {
+    return step.status === "running" ? t("stepReadingQuota") : t("stepReadQuota");
+  }
+  if (step.tool === "send_agent_message") {
+    if (step.status === "running") return t("stepSendingAgent");
+    if (step.deliveryStatus === "sent") return t("stepTaskSent");
+    if (step.ambiguousCount) return t("stepFoundSessions").replace("{n}", String(step.ambiguousCount));
+    return step.error ? t("stepFailed") : t("stepTaskSent");
+  }
+  return step.tool || "";
+}
+
+function renderStepsBlock(steps) {
+  const wrap = document.createElement("div");
+  wrap.className = "steps";
+  for (const step of steps) {
+    const card = document.createElement("div");
+    card.className = `step is-${step.status || "done"}`;
+
+    const head = document.createElement("div");
+    head.className = "step-head";
+    const dot = document.createElement("span");
+    dot.className = "step-dot";
+    const title = document.createElement("span");
+    title.className = "step-title";
+    title.textContent = stepHeadline(step);
+    head.append(dot, title);
+    card.appendChild(head);
+
+    if (step.status === "error" && step.error) {
+      const err = document.createElement("div");
+      err.className = "step-error";
+      err.textContent = step.error;
+      card.appendChild(err);
+    }
+
+    if (step.tool === "search_files" && Array.isArray(step.files) && step.files.length) {
+      const list = document.createElement("div");
+      list.className = "file-results";
+      for (const file of step.files) {
+        const row = document.createElement("div");
+        row.className = "file-row";
+        const info = document.createElement("div");
+        info.className = "file-info";
+        const nameEl = document.createElement("span");
+        nameEl.className = "file-name";
+        nameEl.textContent = file.name;
+        const pathEl = document.createElement("span");
+        pathEl.className = "file-path";
+        pathEl.textContent = file.path;
+        pathEl.title = file.path;
+        info.append(nameEl, pathEl);
+
+        const openBtn = document.createElement("button");
+        openBtn.type = "button";
+        openBtn.className = "file-open-btn";
+        openBtn.textContent = t("stepOpenBtn");
+        openBtn.addEventListener("click", () => {
+          if (typeof window.chat.openFile === "function") {
+            void action(() => window.chat.openFile({ path: file.path }));
+          }
+        });
+        row.append(info, openBtn);
+        list.appendChild(row);
+      }
+      card.appendChild(list);
+    }
+
+    if (step.status === "confirming" && step.confirmation) {
+      const c = step.confirmation;
+      const meta = document.createElement("div");
+      meta.className = "confirm-meta";
+      meta.textContent = [c.clientLabel || c.client, c.project, c.sessionTitle].filter(Boolean).join(" · ");
+      const preview = document.createElement("div");
+      preview.className = "confirm-msg";
+      preview.textContent = c.message || "";
+      const actions = document.createElement("div");
+      actions.className = "confirm-actions";
+
+      const cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
+      cancelBtn.className = "ui-btn quiet";
+      cancelBtn.textContent = t("cancel");
+      cancelBtn.addEventListener("click", () => {
+        if (typeof window.chat.confirmTool === "function") {
+          void window.chat.confirmTool({ stepId: step.id, approved: false });
+        }
+      });
+
+      const okBtn = document.createElement("button");
+      okBtn.type = "button";
+      okBtn.className = "ui-btn primary";
+      okBtn.textContent = t("stepConfirmSend");
+      okBtn.addEventListener("click", () => {
+        if (typeof window.chat.confirmTool === "function") {
+          void window.chat.confirmTool({ stepId: step.id, approved: true });
+        }
+      });
+
+      actions.append(cancelBtn, okBtn);
+      card.append(meta, preview, actions);
+    }
+
+    wrap.appendChild(card);
+  }
+  return wrap;
+}
+
 function render(next) {
   if (!next || (state && next.revision <= state.revision)) return;
   const changedSession = next.selectedId !== state?.selectedId;
@@ -271,6 +449,9 @@ function render(next) {
         return row;
       }
       if (message.status === "streaming") row.classList.add("streaming");
+      if (Array.isArray(message.steps) && message.steps.length) {
+        row.append(renderStepsBlock(message.steps));
+      }
       const body = document.createElement("div");
       body.className = "markdown";
       body.innerHTML = message.html;

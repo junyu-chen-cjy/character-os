@@ -276,20 +276,21 @@ function createFileTools({
     const foundByPath = new Map();
     let backend = "fs";
 
-    // Primary on macOS: Spotlight (mdfind) scoped to safe user directories.
+    // Primary on macOS: Spotlight (mdfind) scoped to each safe user directory
+    // in parallel (macOS mdfind handles one -onlyin cleanly and returns in ~150ms).
     if (platform === "darwin" && (query || extension || type === "directory")) {
       const mdQuery = buildMdfindQuery({ query, extension, type });
-      const mdArgs = [];
-      for (const root of roots) mdArgs.push("-onlyin", root);
-      mdArgs.push(mdQuery);
-      try {
-        const { stdout } = await execFileFn("/usr/bin/mdfind", mdArgs, {
-          timeout: MDFIND_TIMEOUT_MS,
+      const runs = await Promise.allSettled(
+        roots.map((root) => execFileFn("/usr/bin/mdfind", ["-onlyin", root, mdQuery], {
+          timeout: 3000,
           maxBuffer: 2 * 1024 * 1024,
           signal,
-        });
+        }))
+      );
+      for (const outcome of runs) {
+        if (outcome.status !== "fulfilled") continue;
         backend = "spotlight";
-        const lines = String(stdout || "").split(/\r?\n/).filter(Boolean).slice(0, 300);
+        const lines = String(outcome.value?.stdout || "").split(/\r?\n/).filter(Boolean).slice(0, 200);
         for (const line of lines) {
           if (isSensitivePath(line, resolvedHome)) continue;
           let stat;
@@ -297,8 +298,6 @@ function createFileTools({
           if (!matchesFilter(line, stat, filter)) continue;
           foundByPath.set(line, stat);
         }
-      } catch {
-        // Spotlight unavailable or timed out — fall through to bounded fs scan.
       }
     }
 

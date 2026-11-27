@@ -7,6 +7,7 @@ const { randomUUID } = require("node:crypto");
 const MarkdownIt = require("markdown-it");
 const { atomicWriteJson } = require("./quota-credential-store");
 const { ChatError, parseEndpoint, streamReply } = require("./chat-provider");
+const { runAgentTurn } = require("./personal-agent-core");
 
 const PAGE = path.join(__dirname, "chat.html");
 const PAGE_URL = pathToFileURL(PAGE).href;
@@ -26,12 +27,58 @@ const CMD_WIDTH = 520;
 const CMD_MIN_HEIGHT = 60;
 const CMD_MAX_HEIGHT = 640;
 
-function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorage, shell, getLang, screen, isAppQuitting }) {
+function summarizeStepForUi(step) {
+  if (!step || typeof step !== "object") return null;
+  const out = {
+    id: String(step.id || ""),
+    tool: String(step.tool || ""),
+    status: String(step.status || "running"),
+  };
+  if (step.code) out.code = String(step.code);
+  if (step.error) out.error = String(step.error).slice(0, 300);
+  if (step.confirmation) out.confirmation = step.confirmation;
+  const r = step.result;
+  if (r && typeof r === "object") {
+    if (step.tool === "search_files" && Array.isArray(r.results)) {
+      out.totalFound = Number(r.totalFound) || r.results.length;
+      out.files = r.results.slice(0, 8).map((f) => ({
+        path: f.path,
+        name: f.name,
+        type: f.type,
+        extension: f.extension || null,
+        modifiedAt: f.modifiedAt || null,
+      }));
+    } else if (step.tool === "open_file") {
+      out.file = { action: r.action, path: r.path, name: r.name };
+    } else if (step.tool === "list_agent_sessions") {
+      out.liveCount = Number(r.liveCount) || 0;
+      out.recentCount = Number(r.recentCount) || 0;
+    } else if (step.tool === "get_agent_status") {
+      out.sessionCount = Array.isArray(r.sessions) ? r.sessions.length : 0;
+    } else if (step.tool === "get_quota") {
+      out.serviceCount = Array.isArray(r.services) ? r.services.length : 0;
+    } else if (step.tool === "send_agent_message") {
+      out.deliveryStatus = r.deliveryStatus || r.status || "";
+      out.executionStatus = r.executionStatus || "";
+      out.clientLabel = r.clientLabel || r.client || "";
+      out.project = r.project || "";
+      out.sessionTitle = r.sessionTitle || "";
+      if (r.status === "ambiguous" && Array.isArray(r.candidates)) {
+        out.ambiguousCount = r.candidates.length;
+      }
+    }
+  }
+  return out;
+}
+
+function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorage, shell, getLang, screen, isAppQuitting, toolsRegistry }) {
   const isQuitting = typeof isAppQuitting === "function" ? isAppQuitting : () => false;
+  const hasToolsRegistry = Boolean(toolsRegistry && typeof toolsRegistry === "object" && Object.keys(toolsRegistry).length > 0);
   let win;
   let history;
   let settings;
   let active;
+  const pendingConfirmations = new Map();
   let notice = "";
   let revision = 0;
   let modelSettingsRequested = false;
@@ -93,10 +140,21 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
     const messages = (session?.messages || []).map(message => {
       if (message.role !== "assistant") return message;
       if (!rendered.has(message)) rendered.set(message, markdown.render(message.text));
-      return { role: "assistant", html: rendered.get(message), status: message.status, detail: message.detail };
+      return {
+        role: "assistant",
+        html: rendered.get(message),
+        status: message.status,
+        detail: message.detail,
+        ...(Array.isArray(message.steps) && message.steps.length ? { steps: message.steps } : {}),
+      };
     });
     if (session && active?.sessionId === session.id) {
-      messages.push({ role: "assistant", html: markdown.render(active.text), status: "streaming" });
+      messages.push({
+        role: "assistant",
+        html: markdown.render(active.text),
+        status: "streaming",
+        ...(Array.isArray(active.steps) && active.steps.length ? { steps: active.steps } : {}),
+      });
     }
     return {
       revision: ++revision,
@@ -177,8 +235,21 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
     if (active !== request) return;
     clearTimeout(request.timer);
     active = null;
+    for (const [, resolver] of pendingConfirmations) {
+      try { resolver(false); } catch {}
+    }
+    pendingConfirmations.clear();
     const session = history.sessions.find(item => item.id === request.sessionId);
-    const assistant = { role: "assistant", text: request.text, status, detail };
+    const savedSteps = Array.isArray(request.steps) && request.steps.length
+      ? request.steps.map((s) => (s.status === "confirming" ? { ...s, status: "cancelled" } : s))
+      : undefined;
+    const assistant = {
+      role: "assistant",
+      text: request.text,
+      status,
+      detail,
+      ...(savedSteps ? { steps: savedSteps } : {}),
+    };
     try {
       saveHistory({
         ...history,
@@ -196,8 +267,34 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
   function stop() {
     if (!active) return;
     const request = active;
+    for (const [, resolver] of pendingConfirmations) {
+      try { resolver(false); } catch {}
+    }
+    pendingConfirmations.clear();
     request.controller.abort();
     finish(request, "stopped", "Generation stopped.");
+  }
+
+  function confirmTool(payload) {
+    const stepId = typeof payload?.stepId === "string" ? payload.stepId : "";
+    const approved = payload?.approved === true;
+    const resolver = pendingConfirmations.get(stepId);
+    if (!resolver) return;
+    pendingConfirmations.delete(stepId);
+    resolver(approved);
+  }
+
+  async function openFileFromUi(payload) {
+    if (!hasToolsRegistry || !toolsRegistry.open_file) {
+      throw new ChatError("File opener is unavailable.");
+    }
+    const res = await toolsRegistry.open_file.execute({
+      path: typeof payload?.path === "string" ? payload.path : "",
+      reveal: payload?.reveal === true,
+    });
+    if (res?.status === "error") {
+      throw new ChatError(res.error || "Could not open file.");
+    }
   }
 
   function send(text) {
@@ -227,22 +324,64 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
     notice = "";
 
     const messages = session.messages.filter(item => item.text).map(item => ({ role: item.role, content: item.text }));
-    if (settings.systemPrompt) messages.unshift({ role: "system", content: settings.systemPrompt });
-    const request = { sessionId: session.id, controller: new AbortController(), text: "", timer: null };
+    const request = { sessionId: session.id, controller: new AbortController(), text: "", steps: [], timer: null };
     active = request;
     const timeout = AbortSignal.timeout(5 * 60 * 1000);
-    void streamReply({
-      endpoint, model: settings.model, apiKey, messages,
-      signal: AbortSignal.any([request.controller.signal, timeout]),
-      onDelta(delta) {
-        if (active !== request) return;
-        request.text += delta;
-        request.timer ??= setTimeout(() => {
-          request.timer = null;
-          if (active === request) publish();
-        }, 80);
-      },
-    }).then(
+    const combinedSignal = AbortSignal.any([request.controller.signal, timeout]);
+    const schedulePublish = () => {
+      request.timer ??= setTimeout(() => {
+        request.timer = null;
+        if (active === request) publish();
+      }, 80);
+    };
+    const onDelta = (delta) => {
+      if (active !== request) return;
+      request.text += delta;
+      schedulePublish();
+    };
+
+    const runPromise = hasToolsRegistry
+      ? runAgentTurn({
+        endpoint,
+        model: settings.model,
+        apiKey,
+        messages,
+        userSystemPrompt: settings.systemPrompt,
+        registry: toolsRegistry,
+        signal: combinedSignal,
+        onDelta,
+        onStep(nextSteps) {
+          if (active !== request) return;
+          request.steps = nextSteps.map(summarizeStepForUi).filter(Boolean);
+          publish();
+        },
+        requestConfirmation(stepId, _confirm, sig) {
+          return new Promise((resolve) => {
+            if (sig?.aborted) { resolve(false); return; }
+            const done = (val) => {
+              pendingConfirmations.delete(stepId);
+              resolve(Boolean(val));
+            };
+            pendingConfirmations.set(stepId, done);
+            if (sig) sig.addEventListener("abort", () => done(false), { once: true });
+          });
+        },
+      })
+      : (() => {
+        const plainMessages = settings.systemPrompt
+          ? [{ role: "system", content: settings.systemPrompt }, ...messages]
+          : messages;
+        return streamReply({
+          endpoint,
+          model: settings.model,
+          apiKey,
+          messages: plainMessages,
+          signal: combinedSignal,
+          onDelta,
+        });
+      })();
+
+    void runPromise.then(
       () => finish(request, "done"),
       error => finish(request, "error", error instanceof ChatError ? error.message
         : timeout.aborted ? "The model request timed out." : "Could not reach the model endpoint."),
@@ -267,7 +406,13 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
       }
       try {
         if (!history || !settings) loadData();
-        action(value);
+        const maybePromise = action(value);
+        if (maybePromise && typeof maybePromise.then === "function") {
+          return maybePromise.then(
+            () => ({ state: snapshot() }),
+            (error) => ({ error: error instanceof ChatError ? error.message : "The chat action failed." }),
+          );
+        }
         return { state: snapshot() };
       } catch (error) {
         return { error: error instanceof ChatError ? error.message : "The chat action failed." };
@@ -281,6 +426,8 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
   handle("stop", stop);
   handle("save-model", saveModel);
   handle("open-link", openLink);
+  handle("confirm-tool", confirmTool);
+  handle("open-file", openFileFromUi);
 
   function fromWindow(event) {
     return Boolean(win && !win.isDestroyed() && event.sender === win.webContents);
