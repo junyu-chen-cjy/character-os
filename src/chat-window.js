@@ -8,6 +8,7 @@ const MarkdownIt = require("markdown-it");
 const { atomicWriteJson } = require("./quota-credential-store");
 const { ChatError, parseEndpoint, streamReply } = require("./chat-provider");
 const { runAgentTurn } = require("./personal-agent-core");
+const { applyActiveSpaceWindowBehavior } = require("./mac-window");
 
 const PAGE = path.join(__dirname, "chat.html");
 const PAGE_URL = pathToFileURL(PAGE).href;
@@ -458,7 +459,12 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
   function hide() {
     if (!win || win.isDestroyed()) return;
     if (typeof win.isVisible === "function" && !win.isVisible()) return;
-    try { win.hide(); } catch {}
+    try {
+      if (process.platform === "darwin" && typeof win.setAlwaysOnTop === "function") {
+        win.setAlwaysOnTop(false);
+      }
+      win.hide();
+    } catch {}
   }
 
   if (ipcMain && typeof ipcMain.on === "function") {
@@ -474,8 +480,14 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
   function open() {
     openedAt = Date.now();
     if (win && !win.isDestroyed()) {
-      if (process.platform === "darwin" && typeof win.setVisibleOnAllWorkspaces === "function") {
-        win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
+      // Detach from any previous Space before showing so macOS opens the
+      // launcher cleanly in the active Space (ordinary or fullscreen) without
+      // using CanJoinAllSpaces (which causes flashing during 4-finger Space swipes).
+      if (process.platform === "darwin") {
+        if (typeof win.isVisible === "function" && win.isVisible() && typeof win.hide === "function") {
+          win.hide();
+        }
+        applyActiveSpaceWindowBehavior(win);
       }
       placeNearTop();
       if (typeof win.setTitle === "function") win.setTitle(resolveWindowTitle());
@@ -500,7 +512,7 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
       skipTaskbar: true,
       alwaysOnTop: true,
       ...(process.platform === "darwin"
-        ? { type: "panel", acceptFirstMouse: true, hiddenInMissionControl: true, vibrancy: "popover", visualEffectState: "active", backgroundColor: "#00000000", hasShadow: true }
+        ? { acceptFirstMouse: true, hiddenInMissionControl: true, vibrancy: "popover", visualEffectState: "active", backgroundColor: "#00000000", hasShadow: true }
         : { backgroundColor: nativeTheme.shouldUseDarkColors ? "#1d1e22" : "#fcfcfa" }),
       webPreferences: {
         preload: path.join(__dirname, "preload-chat.js"),
@@ -509,8 +521,10 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
       },
     });
     win = window;
-    if (process.platform === "darwin" && typeof window.setVisibleOnAllWorkspaces === "function") {
-      window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
+    // Use MoveToActiveSpace | FullScreenAuxiliary (identical to Workspace) instead
+    // of CanJoinAllSpaces so 4-finger trackpad Space swipes never flash the launcher.
+    if (process.platform === "darwin") {
+      applyActiveSpaceWindowBehavior(window);
     }
     if (typeof window.setAlwaysOnTop === "function") window.setAlwaysOnTop(true, "floating");
     placeNearTop();
