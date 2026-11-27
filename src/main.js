@@ -950,6 +950,10 @@ const settingsWindowRuntime = createSettingsWindowRuntime({
   nativeTheme,
   path,
   discordDefaultAppIdPresent: !!discordPresenceSettings.DEFAULT_CLAWD_DISCORD_APP_ID,
+  isAppQuitting: () => isQuitting,
+  hideOnMinimize: isMac,
+  hideOnClose: isMac,
+  onBeforeShow: () => { if (typeof chatWindow !== "undefined" && chatWindow) chatWindow.hide(); },
   getPetWindowBounds: () => getPetWindowBounds(),
   getNearestWorkArea: (cx, cy) => getNearestWorkArea(cx, cy),
   getTextScale: (bounds) => effectiveTextScaleForKey(
@@ -2963,6 +2967,9 @@ const _dashboard = require("./dashboard")({
   getI18n: () => getDashboardI18nPayload(),
   focusSession: (sessionId, options) => focusDashboardSession(sessionId, options),
   isAppQuitting: () => isQuitting,
+  hideOnMinimize: isMac,
+  hideOnClose: isMac,
+  onBeforeShow: () => { if (typeof chatWindow !== "undefined" && chatWindow) chatWindow.hide(); },
   getPetWindowBounds,
   getNearestWorkArea,
   getSettingsWindow: () => settingsWindowRuntime.getWindow(),
@@ -4635,6 +4642,7 @@ function showResumeInput(t) {
 const chatWindow = require("./chat-window").createChatWindow({
   app, BrowserWindow, ipcMain, nativeTheme, safeStorage, shell, screen,
   getLang: () => lang,
+  isAppQuitting: () => isQuitting,
 });
 app.on("before-quit", chatWindow.stop);
 

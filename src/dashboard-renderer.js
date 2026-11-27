@@ -78,7 +78,15 @@ const WS_STRINGS = {
     quotaUnchanged: "The open panel has the same reading.",
     quotaStale: "Stale",
     quotaPendingReset: "Reset not yet confirmed",
-    quotaWindowDisabled: "Inactive while the weekly limit is exhausted",
+    quotaWindowDisabled: "Not available",
+    quotaDisabledShort: "N/A",
+    quotaUnknown: "Unknown",
+    quotaSvcCodex: "Codex Agent",
+    quotaSvcAgGemini: "Antigravity · Gemini",
+    quotaSvcAgThird: "Antigravity · Claude / GPT",
+    quotaSvcGeminiChat: "Gemini Chat",
+    quotaSvcChatgpt: "ChatGPT Chat",
+    quotaUpdatedAt: "Updated {time}",
     geminiChat: "Gemini Chat",
     geminiChatUsage: "Open Gemini Usage Limits",
     geminiChatWaiting: "The Character OS Chrome extension refreshes Gemini Chat in the background.",
@@ -135,7 +143,15 @@ const WS_STRINGS = {
     quotaUnchanged: "面板中的读数未变化。",
     quotaStale: "已过期",
     quotaPendingReset: "尚未确认重置",
-    quotaWindowDisabled: "周额度耗尽，当前窗口不适用",
+    quotaWindowDisabled: "已停用（不适用）",
+    quotaDisabledShort: "停用",
+    quotaUnknown: "未知",
+    quotaSvcCodex: "Codex Agent",
+    quotaSvcAgGemini: "Antigravity · Gemini",
+    quotaSvcAgThird: "Antigravity · Claude / GPT",
+    quotaSvcGeminiChat: "Gemini 日常聊天",
+    quotaSvcChatgpt: "ChatGPT 日常聊天",
+    quotaUpdatedAt: "更新于 {time}",
     geminiChat: "Gemini 日常聊天",
     geminiChatUsage: "打开 Gemini 用量页",
     geminiChatWaiting: "Character OS Chrome 扩展在后台自动刷新 Gemini 聊天额度。",
@@ -1166,53 +1182,130 @@ function renderQuotaSummary(snapshot) {
 
   const sections = [];
 
-  const antigravityRows = [];
-  const hasCliQuota = sources.some(source => source.antigravityCliQuota);
-  for (const source of sources) {
-    if (source.antigravityCliQuota) {
-      const provider = source.antigravityCliQuota;
-      const rows = new Map();
-      for (const bucket of Object.values(provider.group)) {
-        if (!rows.has(bucket.groupLabel)) rows.set(bucket.groupLabel, []);
-        rows.get(bucket.groupLabel).push(bucket);
+  if (hasWorkspaceDom() && globalThis.CharacterQuotaView && typeof globalThis.CharacterQuotaView.buildUnifiedQuotaRows === "function") {
+    const now = Date.now();
+    const unified = globalThis.CharacterQuotaView.buildUnifiedQuotaRows(accountQuota, now);
+    const serviceLabelKeys = {
+      codex: "quotaSvcCodex",
+      "antigravity-gemini": "quotaSvcAgGemini",
+      "antigravity-claude-gpt": "quotaSvcAgThird",
+      "gemini-chat": "quotaSvcGeminiChat",
+      "chatgpt-chat": "quotaSvcChatgpt",
+    };
+
+    for (const item of unified) {
+      const section = document.createElement("div");
+      section.className = "quota-section";
+      section.dataset.quotaId = item.id;
+
+      const titlebar = document.createElement("div");
+      titlebar.className = "quota-section-titlebar";
+      titlebar.appendChild(createText("div", "quota-section-header", wt(serviceLabelKeys[item.id] || item.id)));
+
+      const metaParts = [];
+      if (item.stale) metaParts.push(wt("quotaStale"));
+      if (item.lastSeenAt) {
+        const ts = new Date(item.lastSeenAt).toLocaleTimeString(i18nPayload?.lang, { hour: "2-digit", minute: "2-digit" });
+        metaParts.push(wt("quotaUpdatedAt").replace("{time}", ts));
       }
-      for (const [label, buckets] of rows) {
-        const row = document.createElement("div");
-        row.className = "quota-group-row";
-        row.appendChild(createText("div", "quota-group-header", `${label} · ${source.host} · ${new Date(provider.lastSeenAt).toLocaleString()}`));
-        for (const raw of buckets) {
-          if (raw.disabled) {
-            row.appendChild(createText("div", "note", `${raw.bucketLabel} · ${wt("quotaWindowDisabled")}`));
-            continue;
+      if (item.source) metaParts.push(item.source);
+      if (metaParts.length) {
+        const metaEl = createText("span", `quota-section-meta${item.stale ? " is-stale" : ""}`, metaParts.join(" · "));
+        if (item.lastSeenAt) metaEl.title = new Date(item.lastSeenAt).toLocaleString();
+        titlebar.appendChild(metaEl);
+      }
+      section.appendChild(titlebar);
+
+      const row = document.createElement("div");
+      row.className = "quota-group-row";
+
+      if (item.unknown) {
+        row.appendChild(createText("div", "note", item.id === "chatgpt-chat" ? wt("quotaUnknown") : wt("quotaNoData")));
+      } else {
+        const halves = document.createElement("div");
+        halves.className = "quota-halves";
+        const slotDefs = [
+          [item.shortWindow, t("dashboardQuotaFiveHour"), "countdown", "outer"],
+          [item.weeklyWindow, t("dashboardQuotaWeekly"), "date", "inner"],
+        ];
+        for (const [slot, fallbackLabel, defaultResetStyle, ringSlot] of slotDefs) {
+          if (!slot) continue;
+          const label = formatQuotaWindowLabel(slot, fallbackLabel);
+          if (slot.kind === "disabled") {
+            const half = document.createElement("div");
+            half.className = "quota-half is-disabled";
+            const labelRow = document.createElement("div");
+            labelRow.className = "quota-label-row";
+            labelRow.append(
+              createText("span", "quota-label", label),
+              createText("span", "quota-percent is-muted", wt("quotaWindowDisabled"))
+            );
+            half.appendChild(labelRow);
+            halves.appendChild(half);
+          } else {
+            halves.appendChild(buildQuotaHalfBar(
+              label,
+              slot,
+              quotaResetStyle(slot, defaultResetStyle),
+              item.providerKey,
+              ringSlot
+            ));
           }
-          const bucket = globalThis.CharacterQuotaView.describeWindow(raw, "antigravityCliQuota", Date.now(), raw.windowMinutes);
-          row.appendChild(buildQuotaHalfBar(formatQuotaWindowLabel(bucket, raw.bucketLabel), bucket, quotaResetStyle(bucket, "countdown"), "antigravityCliQuota", "outer"));
         }
-        antigravityRows.push(row);
+        row.appendChild(halves);
       }
-      continue;
+      section.appendChild(row);
+      sections.push(section);
     }
-    if (hasCliQuota) continue;
-    const provider = source.antigravityQuota;
-    const group = provider && provider.group;
-    if (!group) continue;
-    antigravityRows.push(
-      buildQuotaGroupRow(
-        buildQuotaSourceHeader(source, provider, t("dashboardQuotaGroupGemini"), "antigravityQuota"),
-        liveBucket(group, "geminiFiveHour", "antigravityQuota"),
-        liveBucket(group, "geminiWeekly", "antigravityQuota"),
-        "antigravityQuota"
-      ),
-      buildQuotaGroupRow(
-        buildQuotaSourceHeader(source, provider, t("dashboardQuotaGroupThirdParty"), "antigravityQuota"),
-        liveBucket(group, "thirdPartyFiveHour", "antigravityQuota"),
-        liveBucket(group, "thirdPartyWeekly", "antigravityQuota"),
-        "antigravityQuota"
-      )
-    );
+  } else {
+    const antigravityRows = [];
+    const hasCliQuota = sources.some(source => source.antigravityCliQuota);
+    for (const source of sources) {
+      if (source.antigravityCliQuota) {
+        const provider = source.antigravityCliQuota;
+        const rows = new Map();
+        for (const bucket of Object.values(provider.group)) {
+          if (!rows.has(bucket.groupLabel)) rows.set(bucket.groupLabel, []);
+          rows.get(bucket.groupLabel).push(bucket);
+        }
+        for (const [label, buckets] of rows) {
+          const row = document.createElement("div");
+          row.className = "quota-group-row";
+          row.appendChild(createText("div", "quota-group-header", `${label} · ${source.host} · ${new Date(provider.lastSeenAt).toLocaleString()}`));
+          for (const raw of buckets) {
+            if (raw.disabled) {
+              row.appendChild(createText("div", "note", `${raw.bucketLabel} · ${wt("quotaWindowDisabled")}`));
+              continue;
+            }
+            const bucket = globalThis.CharacterQuotaView.describeWindow(raw, "antigravityCliQuota", Date.now(), raw.windowMinutes);
+            row.appendChild(buildQuotaHalfBar(formatQuotaWindowLabel(bucket, raw.bucketLabel), bucket, quotaResetStyle(bucket, "countdown"), "antigravityCliQuota", "outer"));
+          }
+          antigravityRows.push(row);
+        }
+        continue;
+      }
+      if (hasCliQuota) continue;
+      const provider = source.antigravityQuota;
+      const group = provider && provider.group;
+      if (!group) continue;
+      antigravityRows.push(
+        buildQuotaGroupRow(
+          buildQuotaSourceHeader(source, provider, t("dashboardQuotaGroupGemini"), "antigravityQuota"),
+          liveBucket(group, "geminiFiveHour", "antigravityQuota"),
+          liveBucket(group, "geminiWeekly", "antigravityQuota"),
+          "antigravityQuota"
+        ),
+        buildQuotaGroupRow(
+          buildQuotaSourceHeader(source, provider, t("dashboardQuotaGroupThirdParty"), "antigravityQuota"),
+          liveBucket(group, "thirdPartyFiveHour", "antigravityQuota"),
+          liveBucket(group, "thirdPartyWeekly", "antigravityQuota"),
+          "antigravityQuota"
+        )
+      );
+    }
+    const antigravitySection = buildQuotaSection("dashboardQuotaSectionAntigravity", antigravityRows);
+    if (antigravitySection) sections.push(antigravitySection);
   }
-  const antigravitySection = buildQuotaSection("dashboardQuotaSectionAntigravity", antigravityRows);
-  if (antigravitySection) sections.push(antigravitySection);
 
   const claudeRows = sources.map((source) => {
     const provider = source.claudeQuota;
@@ -1228,31 +1321,33 @@ function renderQuotaSummary(snapshot) {
   const claudeSection = buildQuotaSection("dashboardQuotaSectionClaudeCode", claudeRows);
   if (claudeSection) sections.push(claudeSection);
 
-  const codexRows = sources.map((source) => {
-    const provider = source.codexQuota;
-    const group = provider && provider.group;
-    if (!group) return null;
-    return buildQuotaGroupRow(
-      buildQuotaSourceHeader(source, provider, null, "codexQuota"),
-      liveBucket(group, "codexFiveHour", "codexQuota"),
-      liveBucket(group, "codexWeekly", "codexQuota"),
-      "codexQuota"
-    );
-  });
-  const codexSection = buildQuotaSection("dashboardQuotaSectionCodex", codexRows);
-  if (codexSection) sections.push(codexSection);
+  if (!hasWorkspaceDom()) {
+    const codexRows = sources.map((source) => {
+      const provider = source.codexQuota;
+      const group = provider && provider.group;
+      if (!group) return null;
+      return buildQuotaGroupRow(
+        buildQuotaSourceHeader(source, provider, null, "codexQuota"),
+        liveBucket(group, "codexFiveHour", "codexQuota"),
+        liveBucket(group, "codexWeekly", "codexQuota"),
+        "codexQuota"
+      );
+    });
+    const codexSection = buildQuotaSection("dashboardQuotaSectionCodex", codexRows);
+    if (codexSection) sections.push(codexSection);
 
-  const geminiChatRows = sources.map(source => {
-    const provider = source.geminiChatQuota;
-    if (!provider?.group) return null;
-    return buildQuotaGroupRow(
-      buildQuotaSourceHeader(source, provider, null, "geminiChatQuota"),
-      liveBucket(provider.group, "geminiChatFiveHour", "geminiChatQuota"),
-      liveBucket(provider.group, "geminiChatWeekly", "geminiChatQuota"),
-      "geminiChatQuota"
-    );
-  });
-  if (geminiChatRows.some(Boolean)) sections.push(buildQuotaSection(null, geminiChatRows, [], wt("geminiChat")));
+    const geminiChatRows = sources.map(source => {
+      const provider = source.geminiChatQuota;
+      if (!provider?.group) return null;
+      return buildQuotaGroupRow(
+        buildQuotaSourceHeader(source, provider, null, "geminiChatQuota"),
+        liveBucket(provider.group, "geminiChatFiveHour", "geminiChatQuota"),
+        liveBucket(provider.group, "geminiChatWeekly", "geminiChatQuota"),
+        "geminiChatQuota"
+      );
+    });
+    if (geminiChatRows.some(Boolean)) sections.push(buildQuotaSection(null, geminiChatRows, [], wt("geminiChat")));
+  }
 
   const codexSparkRows = sources.map((source) => {
     const provider = source.codexSparkQuota;
@@ -2718,36 +2813,55 @@ async function runGeminiRead() {
   }
 }
 
+function formatCompactWindowTag(slot, fallback) {
+  const m = Number(slot && slot.windowMinutes);
+  if (!Number.isFinite(m) || m <= 0) return fallback;
+  if (m % 1440 === 0) return `${m / 1440}d`;
+  if (m % 60 === 0) return `${m / 60}h`;
+  return `${m}m`;
+}
+
 function appendOverviewQuotasSection(fragment, now) {
   const section = document.createElement("section");
   section.className = "group";
-  section.appendChild(createText("h2", "group-title", wt("navQuotas")));
+
+  const head = document.createElement("div");
+  head.className = "block-head";
+  head.appendChild(createText("h2", "group-title", wt("navQuotas")));
+  const canReadGemini = workspaceCtx?.system?.platform === "darwin";
+  if (canReadGemini) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "ui-btn quiet";
+    btn.style.height = "24px";
+    btn.textContent = readingGeminiQuota ? wt("reading") : wt("readNow");
+    btn.disabled = readingGeminiQuota;
+    btn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      void runGeminiRead();
+    });
+    head.appendChild(btn);
+  }
+  section.appendChild(head);
 
   const grid = document.createElement("div");
   grid.className = "overview-quotas-grid";
 
-  const icons = (snapshot && snapshot.quotaAgentIcons) || {};
-  const providers = [
-    {
-      id: "codex",
-      name: "Codex",
-      iconUrl: icons.codexQuota || "",
-      summary: summarizeProviderQuota(snapshot.accountQuota, "codexQuota", now),
-    },
-    {
-      id: "antigravity",
-      name: "Antigravity",
-      iconUrl: icons.antigravityQuota || "",
-      summary: summarizeProviderQuota(snapshot.accountQuota, "antigravityQuota", now),
-    },
-  ];
-  const geminiChat = summarizeProviderQuota(snapshot.accountQuota, "geminiChatQuota", now);
-  if (geminiChat) providers.push({ id: "geminiChat", name: wt("geminiChat"), summary: geminiChat });
-  const canReadGemini = workspaceCtx?.system?.platform === "darwin";
+  const unified = globalThis.CharacterQuotaView?.buildUnifiedQuotaRows
+    ? globalThis.CharacterQuotaView.buildUnifiedQuotaRows(snapshot.accountQuota, now)
+    : [];
+  const labelMap = {
+    codex: "quotaSvcCodex",
+    "antigravity-gemini": "quotaSvcAgGemini",
+    "antigravity-claude-gpt": "quotaSvcAgThird",
+    "gemini-chat": "quotaSvcGeminiChat",
+    "chatgpt-chat": "quotaSvcChatgpt",
+  };
 
-  for (const item of providers) {
+  for (const item of unified) {
     const card = document.createElement("div");
-    card.className = "overview-quota-card";
+    card.className = `overview-quota-card overview-quota-row${item.unknown ? " is-unknown" : ""}`;
+    card.dataset.quotaId = item.id;
     card.addEventListener("click", () => {
       workspaceView = "quotas";
       render({ force: true });
@@ -2755,72 +2869,72 @@ function appendOverviewQuotasSection(fragment, now) {
 
     const top = document.createElement("div");
     top.className = "overview-quota-top";
-    const nameEl = document.createElement("span");
-    nameEl.className = "overview-quota-name";
-    if (item.iconUrl) {
-      const img = document.createElement("img");
-      img.src = item.iconUrl;
-      img.alt = "";
-      img.addEventListener("error", () => img.remove(), { once: true });
-      nameEl.appendChild(img);
+    top.appendChild(createText("span", "overview-quota-name", wt(labelMap[item.id] || item.id)));
+
+    const slotsEl = document.createElement("span");
+    slotsEl.className = "overview-quota-slots";
+    if (item.unknown) {
+      slotsEl.appendChild(createText(
+        "span",
+        "overview-quota-val is-empty",
+        item.id === "chatgpt-chat" ? wt("quotaUnknown") : wt("quotaNoData")
+      ));
+    } else {
+      for (const [slot, fallbackTag] of [[item.shortWindow, "5h"], [item.weeklyWindow, "7d"]]) {
+        if (!slot) continue;
+        const tag = formatCompactWindowTag(slot, fallbackTag);
+        const pill = document.createElement("span");
+        if (slot.kind === "disabled") {
+          pill.className = "overview-quota-slot is-disabled";
+          pill.append(createText("span", "k", tag), createText("span", "v", wt("quotaDisabledShort")));
+        } else {
+          const sev = !slot.stale ? globalThis.CharacterQuotaView.severity(slot.usedPercent) : "ok";
+          pill.className = `overview-quota-slot${slot.stale ? " is-stale" : (sev !== "ok" ? ` sev-${sev}` : "")}`;
+          pill.append(createText("span", "k", tag), createText("span", "v", `${slot.remaining}%`));
+        }
+        slotsEl.appendChild(pill);
+      }
     }
-    nameEl.appendChild(document.createTextNode(item.name));
-    const valEl = createText(
-      "span",
-      `overview-quota-val${item.summary ? "" : " is-empty"}`,
-      item.summary ? wt("remainingShort").replace("{pct}", item.summary.remaining) : wt("quotaNoData")
-    );
-    top.append(nameEl, valEl);
+    top.appendChild(slotsEl);
     card.appendChild(top);
 
-    if (item.summary) {
+    if (item.primary && !item.primary.stale) {
       const bar = document.createElement("div");
       bar.className = "overview-quota-bar";
       const fill = document.createElement("div");
-      fill.className = "overview-quota-fill";
-      fill.style.width = `${item.summary.remaining}%`;
-      fill.classList.add("sev-" + globalThis.CharacterQuotaView.severity(item.summary.usedPercent));
+      fill.className = `overview-quota-fill sev-${globalThis.CharacterQuotaView.severity(item.primary.usedPercent)}`;
+      fill.style.width = `${item.primary.remaining}%`;
       bar.appendChild(fill);
-      if (!item.summary.stale) card.appendChild(bar);
-
-      const sub = document.createElement("div");
-      sub.className = "overview-quota-sub";
-      sub.append(
-        createText("span", "", [item.summary.modelGroup === "thirdParty" ? "Claude / GPT" : item.summary.modelGroup === "gemini" ? "Gemini" : item.summary.modelGroup || "", item.summary.windowLabel, item.summary.stale ? wt("quotaStale") : "", item.summary.resetText].filter(Boolean).join(" · ")),
-        createText(
-          "span",
-          "",
-          item.id === "antigravity" && item.summary.lastSeenAt
-            ? wt("readAt").replace("{time}", new Date(item.summary.lastSeenAt).toLocaleTimeString(i18nPayload?.lang, { hour: "2-digit", minute: "2-digit" }))
-            : ""
-        )
-      );
-      card.appendChild(sub);
+      card.appendChild(bar);
     }
 
-    if (item.id === "antigravity" && canReadGemini) {
-      const row = document.createElement("div");
-      row.className = "overview-quota-sub";
-      const status = createText("span", "", geminiStatusShown ? wt(geminiQuotaStatus) : "");
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "ui-btn quiet";
-      btn.style.height = "24px";
-      btn.textContent = readingGeminiQuota ? wt("reading") : wt("readNow");
-      btn.disabled = readingGeminiQuota;
-      btn.addEventListener("click", (event) => {
-        event.stopPropagation();
-        void runGeminiRead();
-      });
-      row.append(status, btn);
-      row.style.alignItems = "center";
-      card.appendChild(row);
+    if (item.primary || item.stale) {
+      const subParts = [];
+      if (item.stale) subParts.push(wt("quotaStale"));
+      else if (item.primary && Number.isFinite(item.primary.resetAt)) {
+        const resetText = quotaResetStyle(item.primary, "countdown") === "date"
+          ? t("dashboardQuotaResetOn").replace("{date}", formatResetDate(item.primary.resetAt))
+          : t("dashboardQuotaResetIn").replace("{time}", formatResetIn(item.primary.resetAt));
+        if (resetText) subParts.push(resetText);
+      }
+      const updated = item.lastSeenAt
+        ? wt("quotaUpdatedAt").replace("{time}", new Date(item.lastSeenAt).toLocaleTimeString(i18nPayload?.lang, { hour: "2-digit", minute: "2-digit" }))
+        : "";
+      if (subParts.length || updated) {
+        const sub = document.createElement("div");
+        sub.className = "overview-quota-sub";
+        sub.append(createText("span", "", subParts.join(" · ")), createText("span", "", updated));
+        card.appendChild(sub);
+      }
     }
 
     grid.appendChild(card);
   }
 
   section.appendChild(grid);
+  if (canReadGemini && geminiStatusShown) {
+    section.appendChild(createText("div", "note", wt(geminiQuotaStatus)));
+  }
   fragment.appendChild(section);
 }
 

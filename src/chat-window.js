@@ -26,7 +26,8 @@ const CMD_WIDTH = 520;
 const CMD_MIN_HEIGHT = 60;
 const CMD_MAX_HEIGHT = 640;
 
-function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorage, shell, getLang, screen }) {
+function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorage, shell, getLang, screen, isAppQuitting }) {
+  const isQuitting = typeof isAppQuitting === "function" ? isAppQuitting : () => false;
   let win;
   let history;
   let settings;
@@ -307,12 +308,18 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
     if (width !== CMD_WIDTH || current !== next) win.setContentSize(CMD_WIDTH, next);
   }
 
+  function hide() {
+    if (!win || win.isDestroyed()) return;
+    if (typeof win.isVisible === "function" && !win.isVisible()) return;
+    try { win.hide(); } catch {}
+  }
+
   if (ipcMain && typeof ipcMain.on === "function") {
     ipcMain.on("chat:resize", (event, height) => { if (fromWindow(event)) resizeTo(Number(height)); });
-    ipcMain.on("chat:dismiss", (event) => { if (fromWindow(event)) win.hide(); });
+    ipcMain.on("chat:dismiss", (event) => { if (fromWindow(event)) hide(); });
     ipcMain.on("chat:blurred", (event) => {
       // The box behaves like a launcher and leaves when focus does.
-      if (fromWindow(event) && Date.now() - openedAt > 500) win.hide();
+      if (fromWindow(event) && Date.now() - openedAt > 250) hide();
     });
   }
 
@@ -322,6 +329,7 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
     if (win && !win.isDestroyed()) {
       if (typeof win.isVisible === "function" && !win.isVisible()) placeNearTop();
       if (typeof win.setTitle === "function") win.setTitle(resolveWindowTitle());
+      if (typeof win.setAlwaysOnTop === "function") win.setAlwaysOnTop(true, "floating");
       if (typeof win.isMinimized === "function" && win.isMinimized()) win.restore();
       if (typeof win.show === "function") win.show();
       if (typeof win.focus === "function") win.focus();
@@ -342,7 +350,7 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
       skipTaskbar: true,
       alwaysOnTop: true,
       ...(process.platform === "darwin"
-        ? { acceptFirstMouse: true, vibrancy: "popover", visualEffectState: "active", backgroundColor: "#00000000", hasShadow: true }
+        ? { acceptFirstMouse: true, hiddenInMissionControl: true, vibrancy: "popover", visualEffectState: "active", backgroundColor: "#00000000", hasShadow: true }
         : { backgroundColor: nativeTheme.shouldUseDarkColors ? "#1d1e22" : "#fcfcfa" }),
       webPreferences: {
         preload: path.join(__dirname, "preload-chat.js"),
@@ -360,6 +368,15 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
       if (typeof window.focus === "function") window.focus();
     });
     window.webContents.once("did-finish-load", showRequestedModelSettings);
+    window.on("blur", () => {
+      if (win === window && Date.now() - openedAt > 250) hide();
+    });
+    window.on("close", (event) => {
+      if (win === window && !isQuitting()) {
+        if (event && typeof event.preventDefault === "function") event.preventDefault();
+        hide();
+      }
+    });
     window.on("closed", () => {
       win = null;
       stop();
@@ -386,7 +403,7 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
     if (!win?.webContents.isLoading()) showRequestedModelSettings();
   }
 
-  return { open, openModelSettings, stop, syncLang };
+  return { open, hide, openModelSettings, stop, syncLang };
 }
 
 module.exports = { createChatWindow };

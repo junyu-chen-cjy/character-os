@@ -15,6 +15,7 @@ const STRINGS = {
     configureButton: "Configure model",
     placeholder: "Ask anything or give a command…",
     moreTitle: "More",
+    closeTitle: "Close (Esc)",
     historyLabel: "History",
     modelLabel: "Model",
     noHistory: "No conversations yet.",
@@ -50,6 +51,7 @@ const STRINGS = {
     configureButton: "配置模型",
     placeholder: "输入问题或指令…",
     moreTitle: "更多",
+    closeTitle: "关闭 (Esc)",
     historyLabel: "历史记录",
     modelLabel: "模型",
     noHistory: "还没有对话。",
@@ -85,6 +87,7 @@ const STRINGS = {
     configureButton: "設定模型",
     placeholder: "輸入問題或指令…",
     moreTitle: "更多",
+    closeTitle: "關閉 (Esc)",
     historyLabel: "歷史記錄",
     modelLabel: "模型",
     noHistory: "還沒有對話。",
@@ -139,6 +142,11 @@ function applyLocaleChrome() {
   document.title = t("windowTitle");
   moreBtn.title = t("moreTitle");
   moreBtn.setAttribute("aria-label", t("moreTitle"));
+  const closeBtn = el("close-cmd");
+  if (closeBtn) {
+    closeBtn.title = t("closeTitle");
+    closeBtn.setAttribute("aria-label", t("closeTitle"));
+  }
   el("new-chat-label").textContent = t("newChat");
   el("history-label").textContent = t("historyLabel");
   el("drawer-title").textContent = t("recentThreads");
@@ -362,6 +370,9 @@ moreBtn.addEventListener("click", () => {
   if (view !== "chat") setView("chat");
   setToolsOpen(!toolsOpen);
 });
+el("close-cmd")?.addEventListener("click", () => {
+  if (typeof window.chat.dismiss === "function") window.chat.dismiss();
+});
 toggleHistoryBtn.addEventListener("click", () => {
   setToolsOpen(false);
   setView("history");
@@ -420,9 +431,10 @@ transcript.addEventListener("click", event => {
   void window.chat.openLink(link.href);
 });
 
-// The main process hides the box when focus leaves it (see isPristine).
+// The main process hides the launcher when focus leaves it without stopping
+// any in-flight request or discarding history.
 window.addEventListener("blur", () => {
-  if (isPristine() && typeof window.chat.blurred === "function") window.chat.blurred();
+  if (typeof window.chat.blurred === "function") window.chat.blurred();
 });
 
 window.chat.onChanged(render);

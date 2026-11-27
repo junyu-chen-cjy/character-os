@@ -91,6 +91,9 @@ function createSettingsWindowRuntime(options = {}) {
   const discordDefaultAppIdPresent = !!options.discordDefaultAppIdPresent;
   const scheduleLater = typeof options.setTimeout === "function" ? options.setTimeout : setTimeout;
   const clearScheduled = typeof options.clearTimeout === "function" ? options.clearTimeout : clearTimeout;
+  const isAppQuitting = typeof options.isAppQuitting === "function" ? options.isAppQuitting : () => false;
+  const hideOnMinimize = options.hideOnMinimize === true;
+  const hideOnClose = options.hideOnClose === true;
 
   let settingsWindow = null;
   let readyToShowFallbackTimer = null;
@@ -391,6 +394,7 @@ function createSettingsWindowRuntime(options = {}) {
 
   function showAndFocusSettingsWindow(win, showOptions = {}) {
     if (!isLiveWindow(win)) return false;
+    if (typeof options.onBeforeShow === "function") options.onBeforeShow();
     if (
       showOptions.restoreMinimized
       && typeof win.isMinimized === "function"
@@ -530,9 +534,24 @@ function createSettingsWindowRuntime(options = {}) {
         scheduleWindowBoundsSave(createdWindow);
       });
       createdWindow.on("resize", () => scheduleWindowBoundsSave(createdWindow));
+      createdWindow.on("minimize", (event) => {
+        if (hideOnMinimize && !isAppQuitting()) {
+          if (event && typeof event.preventDefault === "function") event.preventDefault();
+          persistWindowBoundsNow(createdWindow);
+          if (typeof createdWindow.hide === "function") createdWindow.hide();
+        }
+      });
       // `closed` is too late to query native geometry. Flush while the window
       // is still live so a pending debounce cannot lose the user's last move.
-      createdWindow.on("close", () => persistWindowBoundsNow(createdWindow));
+      createdWindow.on("close", (event) => {
+        persistWindowBoundsNow(createdWindow);
+        if (hideOnClose && !isAppQuitting()) {
+          if (event && typeof event.preventDefault === "function") event.preventDefault();
+          if (typeof options.onBeforeClosed === "function") options.onBeforeClosed();
+          if (typeof options.onAfterClosed === "function") options.onAfterClosed();
+          if (typeof createdWindow.hide === "function") createdWindow.hide();
+        }
+      });
     }
     let didShowCreatedWindow = false;
     function showCreatedWindow(showOptions = {}) {

@@ -79,6 +79,9 @@ function sameBounds(a, b) {
 
 module.exports = function initDashboard(ctx) {
   const platform = ctx.platform || process.platform;
+  const isAppQuitting = typeof ctx.isAppQuitting === "function" ? ctx.isAppQuitting : () => false;
+  const hideOnMinimize = ctx.hideOnMinimize === true;
+  const hideOnClose = ctx.hideOnClose === true;
   const configuredDefaultWidth = Number.isFinite(ctx.defaultWidth) && ctx.defaultWidth >= MIN_WIDTH
     ? Math.round(ctx.defaultWidth)
     : DEFAULT_WIDTH;
@@ -554,9 +557,28 @@ module.exports = function initDashboard(ctx) {
       if (dashboardWindow !== createdWindow) return;
       quickMode.handleNormalHostBlur();
     });
+    // On macOS, minimizing to the Dock creates a lingering thumbnail tile on
+    // the right side of the Dock; hide the window instead and restore cleanly
+    // when reopened from the pet or menu.
+    dashboardWindow.on("minimize", (event) => {
+      if (hideOnMinimize && !isAppQuitting()) {
+        if (event && typeof event.preventDefault === "function") event.preventDefault();
+        persistWindowBoundsNow(createdWindow);
+        if (typeof createdWindow.hide === "function") createdWindow.hide();
+      }
+    });
     // `closed` is too late to query native geometry. Flush while the window
     // is still live so a pending debounce cannot lose the user's last move.
-    dashboardWindow.on("close", () => persistWindowBoundsNow(createdWindow));
+    // On macOS, closing hides the single Workspace instance instead of
+    // destroying it so reopening restores state immediately.
+    dashboardWindow.on("close", (event) => {
+      persistWindowBoundsNow(createdWindow);
+      if (hideOnClose && !isAppQuitting()) {
+        if (event && typeof event.preventDefault === "function") event.preventDefault();
+        quickMode.endForOrdinaryOpen();
+        if (typeof createdWindow.hide === "function") createdWindow.hide();
+      }
+    });
     const createdHost = dashboardHost;
     const requestedInitialView = typeof options.view === "string" ? options.view : "";
     createdHost.webContents.once("did-finish-load", () => {
@@ -684,12 +706,16 @@ module.exports = function initDashboard(ctx) {
   }
 
   function showDashboard(options = {}) {
+    if (typeof ctx.onBeforeShow === "function") ctx.onBeforeShow();
     // An ordinary open always wins over an in-flight quick round: return the
     // page and restore opacity/input before the window takes the keyboard, so
     // the user never focuses a blank parked host.
     quickMode.endForOrdinaryOpen();
     if (dashboardWindow && !dashboardWindow.isDestroyed()) {
-      if (dashboardWindow.isMinimized()) dashboardWindow.restore();
+      if (typeof dashboardWindow.isMinimized === "function" && dashboardWindow.isMinimized()
+          && typeof dashboardWindow.restore === "function") {
+        dashboardWindow.restore();
+      }
       // A debounce still pending on an open window holds the user's own last
       // move. The re-anchor below drops that timer and rebases the baseline,
       // so without flushing first the placement is lost for good — the close

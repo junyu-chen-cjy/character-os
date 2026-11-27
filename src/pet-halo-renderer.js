@@ -1,37 +1,120 @@
 "use strict";
 
 (() => {
-  // Duration pieces are composed per language so zh reads "4 小时 19 分后重置"
-  // and en reads "resets in 4h 19m" instead of a glued translation.
   const STRINGS = {
     en: {
+      workspace: "Workspace",
+      unknown: "Unknown",
+      noData: "No data",
+      disabled: "N/A",
       stale: "Stale",
-      workspace: "Workspace", noData: "No data", left: "{pct}", win5h: "5h", win7d: "Weekly",
-      resetsIn: "resets in {t}", resetsOn: "resets {d}", dH: "{h}h", dHM: "{h}h {m}m", dM: "{m}m",
-      read: "Read {t}", updated: "Updated {t}", justNow: "just now", mAgo: "{n}m ago", hAgo: "{n}h ago",
+      svcCodex: "Codex",
+      svcAgGemini: "AG · Gemini",
+      svcAgThird: "AG · Claude/GPT",
+      svcGeminiChat: "Gemini Chat",
+      svcChatgpt: "ChatGPT",
+      resetsIn: "resets in {t}",
+      resetsOn: "resets {d}",
+      dH: "{h}h",
+      dHM: "{h}h {m}m",
+      dM: "{m}m",
+      updated: "Updated {t}",
+      justNow: "just now",
+      mAgo: "{n}m ago",
+      hAgo: "{n}h ago",
     },
     zh: {
+      workspace: "工作台",
+      unknown: "未知",
+      noData: "暂无数据",
+      disabled: "停用",
       stale: "已过期",
-      workspace: "工作台", noData: "暂无数据", left: "{pct}", win5h: "5 小时", win7d: "每周",
-      resetsIn: "{t}后重置", resetsOn: "{d}重置", dH: "{h} 小时", dHM: "{h} 小时 {m} 分", dM: "{m} 分钟",
-      read: "读取于 {t}", updated: "更新于 {t}", justNow: "刚刚", mAgo: "{n} 分钟前", hAgo: "{n} 小时前",
+      svcCodex: "Codex",
+      svcAgGemini: "AG · Gemini",
+      svcAgThird: "AG · Claude/GPT",
+      svcGeminiChat: "Gemini 聊天",
+      svcChatgpt: "ChatGPT",
+      resetsIn: "{t}后重置",
+      resetsOn: "{d}重置",
+      dH: "{h}小时",
+      dHM: "{h}小时{m}分",
+      dM: "{m}分",
+      updated: "更新于 {t}",
+      justNow: "刚刚",
+      mAgo: "{n}分钟前",
+      hAgo: "{n}小时前",
     },
     "zh-TW": {
+      workspace: "工作台",
+      unknown: "未知",
+      noData: "暫無資料",
+      disabled: "停用",
       stale: "已過期",
-      workspace: "工作台", noData: "暫無資料", left: "{pct}", win5h: "5 小時", win7d: "每週",
-      resetsIn: "{t}後重置", resetsOn: "{d}重置", dH: "{h} 小時", dHM: "{h} 小時 {m} 分", dM: "{m} 分鐘",
-      read: "讀取於 {t}", updated: "更新於 {t}", justNow: "剛剛", mAgo: "{n} 分鐘前", hAgo: "{n} 小時前",
+      svcCodex: "Codex",
+      svcAgGemini: "AG · Gemini",
+      svcAgThird: "AG · Claude/GPT",
+      svcGeminiChat: "Gemini 聊天",
+      svcChatgpt: "ChatGPT",
+      resetsIn: "{t}後重置",
+      resetsOn: "{d}重置",
+      dH: "{h}小時",
+      dHM: "{h}小時{m}分",
+      dM: "{m}分",
+      updated: "更新於 {t}",
+      justNow: "剛剛",
+      mAgo: "{n}分鐘前",
+      hAgo: "{n}小時前",
     },
     ja: {
-      workspace: "ワークスペース", noData: "データなし", left: "{pct}", win5h: "5時間", win7d: "週間",
-      resetsIn: "{t}後にリセット", resetsOn: "{d}にリセット", dH: "{h}時間", dHM: "{h}時間{m}分", dM: "{m}分",
-      read: "{t}に取得", updated: "{t}に更新", justNow: "たった今", mAgo: "{n}分前", hAgo: "{n}時間前",
+      workspace: "ワークスペース",
+      unknown: "不明",
+      noData: "データなし",
+      disabled: "停止",
+      stale: "期限切れ",
+      svcCodex: "Codex",
+      svcAgGemini: "AG · Gemini",
+      svcAgThird: "AG · Claude/GPT",
+      svcGeminiChat: "Gemini チャット",
+      svcChatgpt: "ChatGPT",
+      resetsIn: "{t}後にリセット",
+      resetsOn: "{d}にリセット",
+      dH: "{h}時間",
+      dHM: "{h}時間{m}分",
+      dM: "{m}分",
+      updated: "{t}に更新",
+      justNow: "たった今",
+      mAgo: "{n}分前",
+      hAgo: "{n}時間前",
     },
     ko: {
-      workspace: "워크스페이스", noData: "데이터 없음", left: "{pct}", win5h: "5시간", win7d: "주간",
-      resetsIn: "{t} 후 초기화", resetsOn: "{d} 초기화", dH: "{h}시간", dHM: "{h}시간 {m}분", dM: "{m}분",
-      read: "{t} 읽음", updated: "{t} 업데이트", justNow: "방금", mAgo: "{n}분 전", hAgo: "{n}시간 전",
+      workspace: "워크스페이스",
+      unknown: "알 수 없음",
+      noData: "데이터 없음",
+      disabled: "중단",
+      stale: "만료됨",
+      svcCodex: "Codex",
+      svcAgGemini: "AG · Gemini",
+      svcAgThird: "AG · Claude/GPT",
+      svcGeminiChat: "Gemini 채팅",
+      svcChatgpt: "ChatGPT",
+      resetsIn: "{t} 후 초기화",
+      resetsOn: "{d} 초기화",
+      dH: "{h}시간",
+      dHM: "{h}시간 {m}분",
+      dM: "{m}분",
+      updated: "{t} 업데이트",
+      justNow: "방금",
+      mAgo: "{n}분 전",
+      hAgo: "{n}시간 전",
     },
+  };
+
+  const SERVICE_NAME_KEY = {
+    codex: "svcCodex",
+    "antigravity-gemini": "svcAgGemini",
+    "antigravity-claude-gpt": "svcAgThird",
+    "gemini-chat": "svcGeminiChat",
+    "chatgpt-chat": "svcChatgpt",
   };
 
   const shellEl = document.getElementById("haloShell");
@@ -81,41 +164,30 @@
       try {
         const d = new Intl.DateTimeFormat(state.lang || "en", { month: "short", day: "numeric" }).format(target);
         return t("resetsOn", { d });
-      } catch {
-        // fall through to a relative duration
-      }
+      } catch {}
     }
     return t("resetsIn", { t: formatDuration(totalMin) });
   }
 
-  function formatAge(lastSeenAt, now) {
-    const diff = Math.max(0, now - lastSeenAt);
+  function formatAge(ts, now) {
+    const diff = Math.max(0, now - ts);
     const min = Math.floor(diff / 60000);
     if (min < 1) return t("justNow");
     if (min < 60) return t("mAgo", { n: min });
     const hr = Math.floor(min / 60);
     if (hr < 24) return t("hAgo", { n: hr });
     try {
-      return new Intl.DateTimeFormat(state.lang || "en", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(lastSeenAt);
+      return new Intl.DateTimeFormat(state.lang || "en", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(ts);
     } catch {
-      return new Date(lastSeenAt).toLocaleString();
+      return new Date(ts).toLocaleString();
     }
   }
 
-  function resolvePrimaryQuotas(now) {
-    const icons = state.quotaAgentIcons || {};
-    const view = globalThis.CharacterQuotaView;
-    return [
-      { id: "codex", name: "Codex", iconUrl: icons.codexQuota || "", bucket: view.primaryWindow(state.accountQuota, "codexQuota", now) },
-      { id: "antigravity", name: "Antigravity", iconUrl: icons.antigravityQuota || "", bucket: view.primaryWindow(state.accountQuota, "antigravityQuota", now) },
-    ];
-  }
-
-  function windowLabel(minutes) {
-    if (minutes === 300) return t("win5h");
-    if (minutes === 10080) return t("win7d");
-    if (minutes % 1440 === 0) return (minutes / 1440) + "d";
-    return minutes % 60 === 0 ? (minutes / 60) + "h" : minutes + "m";
+  function shortPeriodLabel(minutes, fallback) {
+    if (!Number.isFinite(minutes) || minutes <= 0) return fallback;
+    if (minutes % 1440 === 0) return `${minutes / 1440}d`;
+    if (minutes % 60 === 0) return `${minutes / 60}h`;
+    return `${minutes}m`;
   }
 
   function el(tag, className, text) {
@@ -128,7 +200,7 @@
   function reportHeightSoon() {
     requestAnimationFrame(() => {
       const rect = shellEl.getBoundingClientRect();
-      const totalHeight = Math.ceil(rect.height + 14);
+      const totalHeight = Math.ceil(rect.height + 10);
       if (totalHeight > 20 && Math.abs(totalHeight - lastReportedHeight) >= 2) {
         lastReportedHeight = totalHeight;
         window.petHaloAPI.reportLayout({ height: totalHeight });
@@ -150,55 +222,70 @@
   icoCodex.addEventListener("error", () => { icoCodex.hidden = true; svgCodex.style.display = ""; });
   icoAntigravity.addEventListener("error", () => { icoAntigravity.hidden = true; svgAntigravity.style.display = ""; });
 
+  function buildSlotChip(slot, defaultTag) {
+    if (!slot) return null;
+    const tag = shortPeriodLabel(slot.windowMinutes, defaultTag);
+    if (slot.kind === "disabled") {
+      const chip = el("span", "q-slot disabled");
+      chip.append(el("span", "k", tag), el("span", "v", t("disabled")));
+      return chip;
+    }
+    const sev = !slot.stale ? globalThis.CharacterQuotaView.severity(slot.usedPercent) : "ok";
+    const cls = slot.stale ? "stale" : (sev === "hot" ? "bad" : sev === "warn" ? "warn" : "");
+    const chip = el("span", `q-slot${cls ? ` ${cls}` : ""}`);
+    chip.append(el("span", "k", tag), el("span", "v", `${slot.remaining}%`));
+    return chip;
+  }
+
+  function buildRowTooltip(item, now) {
+    const parts = [];
+    for (const [label, slot] of [["5h", item.shortWindow], ["7d", item.weeklyWindow]]) {
+      if (!slot) continue;
+      if (slot.kind === "disabled") {
+        parts.push(`${label}: ${t("disabled")}`);
+      } else {
+        const reset = slot.expired ? t("stale") : formatReset(slot.resetAt, slot.windowMinutes);
+        parts.push(`${shortPeriodLabel(slot.windowMinutes, label)} ${slot.remaining}%${reset ? ` (${reset})` : ""}`);
+      }
+    }
+    if (item.lastSeenAt) parts.push(t("updated", { t: formatAge(item.lastSeenAt, now) }));
+    if (item.source) parts.push(item.source);
+    return parts.join(" · ");
+  }
+
   function renderQuotaSection() {
     const now = Date.now();
-    const rows = resolvePrimaryQuotas(now).map((item) => {
-      const severity = globalThis.CharacterQuotaView.severity(item.bucket?.usedPercent);
-      const sev = !item.bucket?.stale && severity !== "ok" ? (severity === "hot" ? "bad" : "warn") : "";
-      const row = el("div", `q${sev ? ` ${sev}` : ""}`);
-      const head = el("div", "q-head");
-      if (item.iconUrl) {
-        const img = el("img", "q-ico");
-        img.src = item.iconUrl;
-        img.alt = "";
-        img.addEventListener("error", () => img.remove(), { once: true });
-        head.appendChild(img);
+    const unified = globalThis.CharacterQuotaView.buildUnifiedQuotaRows(state.accountQuota, now);
+    const rows = unified.map((item) => {
+      const row = el("div", `q-row${item.unknown ? " is-muted" : ""}`);
+      row.dataset.quotaId = item.id;
+      const name = t(SERVICE_NAME_KEY[item.id] || item.id);
+      row.appendChild(el("span", "q-name", name));
+
+      const slots = el("div", "q-slots");
+      if (item.unknown) {
+        slots.appendChild(el("span", "q-none", item.id === "chatgpt-chat" ? t("unknown") : t("noData")));
+      } else {
+        const shortChip = buildSlotChip(item.shortWindow, "5h");
+        const weeklyChip = buildSlotChip(item.weeklyWindow, "7d");
+        if (shortChip) slots.appendChild(shortChip);
+        if (weeklyChip) slots.appendChild(weeklyChip);
       }
-      head.appendChild(el("span", "q-name", item.name));
+      row.appendChild(slots);
 
-      if (!item.bucket) {
-        head.appendChild(el("span", "q-none", t("noData")));
-        row.appendChild(head);
-        return row;
-      }
-
-      const val = el("span", "q-val", String(item.bucket.remaining));
-      val.appendChild(el("small", "", "%"));
-      head.appendChild(val);
-      row.appendChild(head);
-      if (item.bucket.source) row.title = item.bucket.source;
-
-      const meter = el("div", `ui-meter${sev ? ` ${sev}` : ""}`);
+      const primary = item.primary;
+      const sev = primary && !primary.stale ? globalThis.CharacterQuotaView.severity(primary.usedPercent) : "ok";
+      const barCls = !primary || primary.stale
+        ? "empty"
+        : (sev === "hot" ? "bad" : sev === "warn" ? "warn" : "");
+      const bar = el("div", `q-bar${barCls ? ` ${barCls}` : ""}`);
       const fill = document.createElement("i");
-      fill.style.width = `${item.bucket.remaining}%`;
-      meter.appendChild(fill);
-      if (!item.bucket.stale) row.appendChild(meter);
+      if (primary && !primary.stale) fill.style.width = `${primary.remaining}%`;
+      bar.appendChild(fill);
+      row.appendChild(bar);
 
-      const meta = el("div", "q-meta");
-      const reset = item.bucket.expired ? "" : formatReset(item.bucket.resetAt, item.bucket.windowMinutes);
-      const group = item.bucket.modelGroup === "thirdParty" ? "Claude / GPT" : item.bucket.modelGroup === "gemini" ? "Gemini" : item.bucket.modelGroup || "";
-      const period = item.bucket.windowMinutes ? windowLabel(item.bucket.windowMinutes) : item.bucket.bucketLabel;
-      const left = [group, period, reset].filter(Boolean).join(" · ");
-      meta.appendChild(el("span", "", left));
-      const seen = item.bucket.lastSeenAt;
-      if (item.bucket.stale || (seen && item.id === "antigravity")) {
-        const age = [item.bucket.stale ? t("stale") : "", seen ? t("updated", { t: formatAge(seen, now) }) : ""].filter(Boolean).join(" · ");
-        const ageEl = el("span", "q-age", age);
-        if (item.bucket.stale) ageEl.classList.add("stale");
-        if (seen) ageEl.title = new Date(seen).toLocaleString();
-        meta.appendChild(ageEl);
-      }
-      row.appendChild(meta);
+      const tip = buildRowTooltip(item, now);
+      if (tip) row.title = tip;
       return row;
     });
     quotaPanelEl.replaceChildren(...rows);

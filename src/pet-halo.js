@@ -10,11 +10,11 @@ const isLinux = process.platform === "linux";
 const isMac = process.platform === "darwin";
 const isWin = process.platform === "win32";
 
-const HALO_WIDTH = 272;
-const HALO_DEFAULT_HEIGHT = 150;
-const HALO_MIN_HEIGHT = 76;
-const HALO_MAX_HEIGHT = 220;
-const HALO_PET_GAP = 6;
+const HALO_WIDTH = 304;
+const HALO_DEFAULT_HEIGHT = 216;
+const HALO_MIN_HEIGHT = 96;
+const HALO_MAX_HEIGHT = 296;
+const HALO_PET_GAP = 1;
 const EDGE_MARGIN = 8;
 const BUBBLE_GAP = 6;
 const HOT_ZONE_PAD = 14;
@@ -119,7 +119,9 @@ function computeHaloBounds({
   height = HALO_DEFAULT_HEIGHT,
   scale = 1,
 }) {
-  const followRect = isScreenRect(anchorRect) ? anchorRect : hitRect;
+  // Anchor directly against the visible sprite hitbox so the hover panel sits
+  // naturally close to the character instead of floating past empty canvas margins.
+  const followRect = isScreenRect(hitRect) ? hitRect : anchorRect;
   if (!isScreenRect(followRect) || !workArea) return null;
 
   const s = clampTextScale(scale);
