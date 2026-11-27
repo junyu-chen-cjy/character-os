@@ -7,7 +7,7 @@
     antigravityQuota: [["geminiFiveHour", 300, "gemini"], ["geminiWeekly", 10080, "gemini"],
       ["thirdPartyFiveHour", 300, "thirdParty"], ["thirdPartyWeekly", 10080, "thirdParty"]],
   };
-  const staleMinutes = { codexQuota: 60, codexSparkQuota: 60, antigravityQuota: 30, antigravityCliQuota: 15, geminiChatQuota: 30, kimiQuota: 7, deepseekQuota: 12 };
+  const staleMinutes = { codexQuota: 30, codexSparkQuota: 60, antigravityQuota: 30, antigravityCliQuota: 25, geminiChatQuota: 30, kimiQuota: 7, deepseekQuota: 12 };
 
   function describeWindow(bucket, providerKey, now, fallbackMinutes, lastSeenAt) {
     if (!bucket || !Number.isFinite(bucket.usedPercent)) return null;

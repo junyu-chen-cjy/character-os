@@ -2435,8 +2435,21 @@ function deliverRendererThemeConfig() {
 }
 
 const codexProfiles = loadCodexProfiles({ logWarn: console.warn });
-let antigravityQuotaMonitor;
-let geminiChatQuotaMonitor;
+let quotaRefreshManager;
+let quotaSessionBadges = new Map();
+function observeSessionsForQuotaRefresh(sessionList) {
+  const next = new Map();
+  for (const s of sessionList ?? []) {
+    if (!s || s.host || s.startupRecovered || s.headless) continue;
+    const prev = quotaSessionBadges.get(s.id);
+    if (prev === "running" && s.badge === "done") {
+      if (s.agentId === "codex") quotaRefreshManager?.nudgeSource("codex", 8000);
+      else if (s.agentId === "antigravity-cli") quotaRefreshManager?.nudgeSource("antigravity", 12000);
+    }
+    next.set(s.id, s.badge);
+  }
+  quotaSessionBadges = next;
+}
 const _stateCtx = {
   get theme() { return getActiveTheme(); },
   get win() { return win; },
@@ -2498,7 +2511,11 @@ const _stateCtx = {
   buildTrayMenu: () => buildTrayMenu(),
   debugLog: (msg) => sessionLog(msg),
   broadcastSessionSnapshot: (snapshot) => {
-    antigravityQuotaMonitor?.observeSessions(snapshot.sessions);
+    observeSessionsForQuotaRefresh(snapshot.sessions);
+    const geminiEntry = snapshot?.accountQuota?.find((s) => s && s.geminiChatQuota && s.geminiChatQuota.lastSeenAt);
+    if (geminiEntry) {
+      quotaRefreshManager?.noteExternalObservation("geminiChat", geminiEntry.geminiChatQuota.lastSeenAt);
+    }
     reconcilePowerSaveBlocker();
     broadcastDashboardSessionSnapshot(snapshot);
     broadcastSessionHudSnapshot(snapshot);
@@ -5214,16 +5231,23 @@ function buildWorkspaceContextPayload() {
       uptimeSec: Math.floor(os.uptime()),
       serverPort: getHookServerPort(),
       doNotDisturb: !!doNotDisturb,
-      antigravityQuotaStatus: antigravityQuotaMonitor?.getStatus(),
-      geminiChatQuotaStatus: geminiChatQuotaMonitor?.getStatus(),
+      antigravityQuotaStatus: quotaRefreshManager?.getStatusSnapshot()?.antigravity?.lastStatus || "waiting",
+      geminiChatQuotaStatus: quotaRefreshManager?.getStatusSnapshot()?.geminiChat?.lastStatus || "extension-managed",
+      quotaRefresh: quotaRefreshManager ? quotaRefreshManager.getStatusSnapshot() : {},
       quotaPinned: !!sessionHudPinned,
     },
   };
 }
 
-const { GEMINI_ANTIGRAVITY_QUOTA_SOURCE, createAntigravityUsageRefresh, createQuotaMonitor } = require("./antigravity-usage-reader");
+const { GEMINI_ANTIGRAVITY_QUOTA_SOURCE, createAntigravityUsageRefresh } = require("./antigravity-usage-reader");
 const { GEMINI_CHAT_SOURCE, GEMINI_CHAT_USAGE_URL, createGeminiChatQuotaRefresh } = require("./gemini-chat-quota");
 const { SOURCE: ANTIGRAVITY_CLI_SOURCE, createCliQuotaRefresh } = require("./antigravity-cli-quota");
+const { createCodexQuotaRefresh } = require("./codex-app-server-quota");
+const { createQuotaRefreshManager } = require("./quota-refresh-manager");
+
+const refreshCodexQuota = createCodexQuotaRefresh({
+  publish: (codexQuota) => _state.updateAccountQuota(null, { codexQuota }),
+});
 const refreshAntigravityCli = createCliQuotaRefresh({
   publish: antigravityCliQuota => _state.updateAccountQuota(ANTIGRAVITY_CLI_SOURCE, {
     displayHost: "Antigravity CLI /usage", antigravityCliQuota,
@@ -5240,34 +5264,57 @@ const refreshGeminiAntigravityQuota = isMac ? createAntigravityUsageRefresh({
     antigravityQuota,
   }),
 }) : null;
-if (refreshGeminiAntigravityQuota) {
-  antigravityQuotaMonitor = createQuotaMonitor({
-    successMinutes: 5,
-    refresh: async () => {
-      const result = await refreshAntigravityCli();
-      return result.status === "ok" ? result : refreshGeminiAntigravityQuota();
+const refreshGeminiChatAccessibility = isMac ? createGeminiChatQuotaRefresh({
+  isTrusted: canReadQuotaAccessibility,
+  publish: (geminiChatQuota) => _state.updateAccountQuota(GEMINI_CHAT_SOURCE, {
+    displayHost: "gemini.google.com/usage",
+    geminiChatQuota,
+  }),
+}) : null;
+
+quotaRefreshManager = createQuotaRefreshManager({
+  powerMonitor,
+  systemIdleState: systemIdleStateForQuota,
+  sources: {
+    codex: {
+      kind: "active",
+      intervalMs: 5 * 60 * 1000,
+      refresh: () => refreshCodexQuota(),
     },
-    systemIdleState: systemIdleStateForQuota,
-  });
-  const refresh = createGeminiChatQuotaRefresh({
-    isTrusted: canReadQuotaAccessibility,
-    publish: (geminiChatQuota) => _state.updateAccountQuota(GEMINI_CHAT_SOURCE, {
-      displayHost: "gemini.google.com/usage",
-      geminiChatQuota,
-    }),
-  });
-  geminiChatQuotaMonitor = createQuotaMonitor({ refresh, systemIdleState: systemIdleStateForQuota });
-  app.on("before-quit", () => {
-    antigravityQuotaMonitor.stop();
-    geminiChatQuotaMonitor.stop();
-  });
-}
+    antigravity: {
+      kind: "active",
+      intervalMs: 5 * 60 * 1000,
+      refresh: async ({ force }) => {
+        const result = await refreshAntigravityCli({ force });
+        if (result.status === "ok" || result.status === "auth-required" || result.status === "network-error") {
+          return result;
+        }
+        if (refreshGeminiAntigravityQuota) {
+          const fallback = await refreshGeminiAntigravityQuota();
+          if (fallback && (fallback.status === "ok" || fallback.status === "unchanged")) return fallback;
+        }
+        return result;
+      },
+    },
+    geminiChat: {
+      kind: "passive",
+      intervalMs: 10 * 60 * 1000,
+    },
+  },
+});
+app.on("before-quit", () => {
+  quotaRefreshManager?.stop();
+});
 
 async function runWorkspaceActionFromDashboard(payload) {
   const type = typeof payload.type === "string" ? payload.type : "";
-  if (type === "read-gemini-antigravity-quota") {
-    const result = await refreshAntigravityCli();
-    return result.status === "ok" ? result : refreshGeminiAntigravityQuota?.() || { status: "unsupported" };
+  if (type === "refresh-all-quotas" || type === "read-gemini-antigravity-quota") {
+    const out = await quotaRefreshManager.refreshAll({ reason: "manual" });
+    // Opportunistically check an open Gemini Usage tab on macOS without faking success.
+    if (refreshGeminiChatAccessibility) {
+      void refreshGeminiChatAccessibility().catch(() => {});
+    }
+    return out;
   }
   if (type === "open-gemini-chat-usage") {
     await shell.openExternal(GEMINI_CHAT_USAGE_URL);
@@ -6180,8 +6227,7 @@ if (!gotTheLock) {
       filePath: path.join(app.getPath("userData"), "windows-process-chain-shadow.log"),
     });
     createWindow();
-    antigravityQuotaMonitor?.start();
-    geminiChatQuotaMonitor?.start();
+    quotaRefreshManager?.start();
     // nativeTheme reads are only used to pick an appearance, so subscribing
     // after the pet window exists keeps startup free of extra reloads. The
     // first did-finish-load repeats the resolution once because the value
@@ -6205,6 +6251,7 @@ if (!gotTheLock) {
         // The main mirror can already be false while the renderer still owns a
         // paused SVG. Always resend the latest cursor position after receipt.
         setForceEyeResend(true);
+        quotaRefreshManager?.handleSystemWake("system-wake-recovery");
       },
       log: sessionLog,
       onError: (err) => safeConsoleError(

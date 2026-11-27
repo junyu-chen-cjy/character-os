@@ -70,7 +70,15 @@ let lastWorkspaceRailSig = "";
 
 const WS_STRINGS = {
   en: {
-    quotaReadGemini: "Read Antigravity quota now",
+    quotaRefreshAll: "Refresh all quotas",
+    quotaRefreshingAll: "Refreshing…",
+    quotaRefreshDone: "Quotas refreshed.",
+    quotaRefreshPartial: "Some sources could not refresh.",
+    quotaStatusRefreshing: "Refreshing…",
+    quotaStatusAuthRequired: "Sign-in required",
+    quotaStatusFailed: "Refresh failed",
+    quotaStatusExtension: "Chrome extension background sync",
+    quotaReadGemini: "Refresh all quotas",
     quotaReadInstructions: "In Gemini Antigravity, reopen the model picker → View Usage and wait for it to refresh.",
     quotaReadOk: "Antigravity quota refreshed.",
     quotaAutoReady: "Antigravity refreshes in the background using the official CLI.",
@@ -134,7 +142,15 @@ const WS_STRINGS = {
     projectsMore: "All projects",
   },
   zh: {
-    quotaReadGemini: "立即读取 Antigravity 额度",
+    quotaRefreshAll: "刷新全部额度",
+    quotaRefreshingAll: "刷新中…",
+    quotaRefreshDone: "全部可刷新额度已更新。",
+    quotaRefreshPartial: "部分服务刷新失败，已保留最后一次读数。",
+    quotaStatusRefreshing: "正在刷新…",
+    quotaStatusAuthRequired: "登录已失效",
+    quotaStatusFailed: "刷新失败",
+    quotaStatusExtension: "由 Chrome 扩展后台同步",
+    quotaReadGemini: "刷新全部额度",
     quotaReadInstructions: "请在 Gemini 的 Antigravity 模型菜单重新打开 View Usage，等刷新完成后读取。",
     quotaReadOk: "Antigravity 额度已刷新。",
     quotaAutoReady: "Antigravity 通过官方 CLI 在后台自动刷新。",
@@ -1199,15 +1215,30 @@ function renderQuotaSummary(snapshot) {
       titlebar.className = "quota-section-titlebar";
       titlebar.appendChild(createText("div", "quota-section-header", wt(serviceLabelKeys[item.id] || item.id)));
 
+      const refreshMap = workspaceCtx?.system?.quotaRefresh || {};
+      const refreshKey = item.id === "codex"
+        ? "codex"
+        : item.id.startsWith("antigravity-")
+          ? "antigravity"
+          : item.id === "gemini-chat"
+            ? "geminiChat"
+            : "";
+      const rState = refreshKey ? refreshMap[refreshKey] : null;
       const metaParts = [];
-      if (item.stale) metaParts.push(wt("quotaStale"));
+      if (rState?.state === "refreshing") metaParts.push(wt("quotaStatusRefreshing"));
+      else if (rState?.state === "auth-required") metaParts.push(wt("quotaStatusAuthRequired"));
+      else if (rState?.state === "error") metaParts.push(wt("quotaStatusFailed"));
+      else if (item.stale) metaParts.push(wt("quotaStale"));
       if (item.lastSeenAt) {
         const ts = new Date(item.lastSeenAt).toLocaleTimeString(i18nPayload?.lang, { hour: "2-digit", minute: "2-digit" });
         metaParts.push(wt("quotaUpdatedAt").replace("{time}", ts));
+      } else if (item.id === "gemini-chat") {
+        metaParts.push(wt("quotaStatusExtension"));
       }
       if (item.source) metaParts.push(item.source);
       if (metaParts.length) {
-        const metaEl = createText("span", `quota-section-meta${item.stale ? " is-stale" : ""}`, metaParts.join(" · "));
+        const isWarn = rState?.state === "auth-required" || rState?.state === "error" || item.stale;
+        const metaEl = createText("span", `quota-section-meta${isWarn ? " is-stale" : ""}`, metaParts.join(" · "));
         if (item.lastSeenAt) metaEl.title = new Date(item.lastSeenAt).toLocaleString();
         titlebar.appendChild(metaEl);
       }
@@ -2791,21 +2822,20 @@ async function runGeminiRead() {
   geminiStatusShown = true;
   render({ force: true });
   try {
-    const result = await window.dashboardAPI.workspaceAction({ type: "read-gemini-antigravity-quota" });
-    geminiQuotaStatus = {
-      ok: "quotaReadOk",
-      "permission-required": "quotaPermission",
-      "open-gemini": "quotaOpenGemini",
-      "open-usage": "quotaReadInstructions",
-      refreshing: "quotaRefreshing",
-      unchanged: "quotaUnchanged",
-      unrecognized: "quotaUnrecognized",
-      "try-later": "quotaTryLater",
-    }[result?.status] || "quotaReadFailed";
+    const result = await window.dashboardAPI.workspaceAction({ type: "refresh-all-quotas" });
+    await reloadWorkspaceContext();
+    const results = result?.results || {};
+    const activeOutcomes = Object.values(results).filter((r) => r && !r.passive);
+    const anyFail = activeOutcomes.some((r) => r.status !== "ok" && r.status !== "unchanged");
+    const anyAuth = activeOutcomes.some((r) => r.status === "auth-required");
+    if (anyAuth) geminiQuotaStatus = "quotaStatusAuthRequired";
+    else if (anyFail) geminiQuotaStatus = "quotaRefreshPartial";
+    else geminiQuotaStatus = "quotaRefreshDone";
   } catch {
-    geminiQuotaStatus = "quotaReadFailed";
+    geminiQuotaStatus = "quotaStatusFailed";
   } finally {
     readingGeminiQuota = false;
+    lastQuotaSummarySignature = null;
     render({ force: true });
   }
 }
@@ -2825,20 +2855,17 @@ function appendOverviewQuotasSection(fragment, now) {
   const head = document.createElement("div");
   head.className = "block-head";
   head.appendChild(createText("h2", "group-title", wt("navQuotas")));
-  const canReadGemini = workspaceCtx?.system?.platform === "darwin";
-  if (canReadGemini) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "ui-btn quiet";
-    btn.style.height = "24px";
-    btn.textContent = readingGeminiQuota ? wt("reading") : wt("readNow");
-    btn.disabled = readingGeminiQuota;
-    btn.addEventListener("click", (event) => {
-      event.stopPropagation();
-      void runGeminiRead();
-    });
-    head.appendChild(btn);
-  }
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "ui-btn quiet";
+  btn.style.height = "24px";
+  btn.textContent = readingGeminiQuota ? wt("quotaRefreshingAll") : wt("quotaRefreshAll");
+  btn.disabled = readingGeminiQuota;
+  btn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    void runGeminiRead();
+  });
+  head.appendChild(btn);
   section.appendChild(head);
 
   const grid = document.createElement("div");
@@ -2924,7 +2951,7 @@ function appendOverviewQuotasSection(fragment, now) {
   }
 
   section.appendChild(grid);
-  if (canReadGemini && geminiStatusShown) {
+  if (geminiStatusShown) {
     section.appendChild(createText("div", "note", wt(geminiQuotaStatus)));
   }
   fragment.appendChild(section);
@@ -3025,22 +3052,26 @@ function renderWorkspaceChrome(sessions) {
   if (wsQuotasPanelEl) wsQuotasPanelEl.hidden = !showQuotasDetail;
 
   if (wsQuotaTitleEl) wsQuotaTitleEl.textContent = wt("quotasTitle");
-  const canReadGemini = workspaceCtx?.system?.platform === "darwin";
   if (wsReadGeminiQuota) {
-    wsReadGeminiQuota.hidden = !canReadGemini;
+    wsReadGeminiQuota.hidden = false;
     wsReadGeminiQuota.disabled = readingGeminiQuota;
-    wsReadGeminiQuota.textContent = wt("quotaReadGemini");
+    wsReadGeminiQuota.textContent = readingGeminiQuota ? wt("quotaRefreshingAll") : wt("quotaRefreshAll");
   }
   if (wsGeminiQuotaStatus) {
-    wsGeminiQuotaStatus.hidden = !canReadGemini;
-    const autoStatus = workspaceCtx?.system?.antigravityQuotaStatus;
-    const automatic = { "permission-required": "quotaPermission", "open-gemini": "quotaAutoUnavailable" };
-    wsGeminiQuotaStatus.textContent = wt(geminiStatusShown ? geminiQuotaStatus : automatic[autoStatus] || "quotaAutoReady");
+    wsGeminiQuotaStatus.hidden = false;
+    if (geminiStatusShown) {
+      wsGeminiQuotaStatus.textContent = wt(geminiQuotaStatus);
+    } else {
+      const qr = workspaceCtx?.system?.quotaRefresh || {};
+      const anyRefreshing = Object.values(qr).some((s) => s && s.state === "refreshing");
+      wsGeminiQuotaStatus.textContent = anyRefreshing ? wt("quotaRefreshingAll") : wt("quotaAutoReady");
+    }
   }
   if (wsRuntimeTitleEl) wsRuntimeTitleEl.textContent = wt("runtimeTitle");
   if (wsBtnManageAgentsEl) wsBtnManageAgentsEl.textContent = wt("manageAgents");
 
   if (wsGeminiChatControls) {
+    const canReadGemini = workspaceCtx?.system?.platform === "darwin";
     wsGeminiChatControls.hidden = !canReadGemini;
     const browserSource = snapshot.accountQuota?.find(source => source.geminiChatQuota && source.host === "Gemini · Chrome background");
     const status = browserSource && Date.now() - browserSource.geminiChatQuota.lastSeenAt < 30 * 60000

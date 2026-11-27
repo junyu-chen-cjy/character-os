@@ -6,6 +6,7 @@ const os = require("node:os");
 const path = require("node:path");
 const run = promisify(execFile);
 const SOURCE = "antigravity-cli-usage";
+
 function normalizeCliGroup(input) {
   const { normalizeQuotaBucket } = require("../hooks/quota-bucket");
   if (!input || typeof input !== "object" || Object.keys(input).length > 128) return null;
@@ -50,30 +51,54 @@ function parseCliUsage(payload, capturedAt = Date.now()) {
   return Object.keys(result).length ? result : null;
 }
 
-function createCliQuotaRefresh({ publish, execute = run }) {
+function classifyCliError(error) {
+  const code = error?.code;
+  const stderr = String(error?.stderr || "");
+  const stdout = String(error?.stdout || "");
+  const combined = `${error?.message || ""} ${stderr} ${stdout}`;
+  if (code === "ENOENT") return "cli-unavailable";
+  if (error?.killed || code === "ETIMEDOUT" || /timed?\s*out/i.test(combined)) return "timeout";
+  if (/unauth|not\s+logged\s+in|sign\s*in|login|expired.*token|401|403|auth/i.test(combined)) return "auth-required";
+  if (/enotfound|econnrefused|econnreset|enetunreach|offline|dns|network|fetch failed/i.test(combined)) return "network-error";
+  return "cli-unavailable";
+}
+
+function createCliQuotaRefresh({ publish, execute = run, now = Date.now, minIntervalMs = 0 }) {
   let pending;
   let nextAttempt = 0;
   let lastResult = { status: "waiting" };
-  return function refresh() {
+  return function refresh(options = {}) {
     if (pending) return pending;
-    if (Date.now() < nextAttempt) return Promise.resolve(lastResult);
+    const force = options && options.force === true;
+    if (!force && minIntervalMs > 0 && now() < nextAttempt) return Promise.resolve(lastResult);
     pending = (async () => {
-      nextAttempt = Date.now() + 5 * 60000;
       try {
         const { stdout } = await execute(path.join(os.homedir(), ".gemini/bin/agy"),
           ["-p", "/usage", "--output-format", "json", "--print-timeout", "30s"], {
             timeout: 40000, maxBuffer: 512 * 1024, windowsHide: true,
             env: { ...process.env, AGY_CLI_DISABLE_AUTO_UPDATE: "true", CI: "true", BROWSER: "false" },
           });
-        const group = parseCliUsage(JSON.parse(stdout));
-        if (!group) return (lastResult = { status: "unrecognized" });
+        let parsed;
+        try { parsed = JSON.parse(stdout); } catch {
+          return (lastResult = { status: "unrecognized" });
+        }
+        const capturedAt = now();
+        const group = parseCliUsage(parsed, capturedAt);
+        if (!group) {
+          const msg = String(parsed?.error || parsed?.message || "");
+          if (/auth|login|unauth|sign.?in/i.test(msg)) {
+            return (lastResult = { status: "auth-required" });
+          }
+          return (lastResult = { status: "unrecognized" });
+        }
         publish(group);
-        return (lastResult = { status: "ok" });
-      } catch {
-        return (lastResult = { status: "cli-unavailable" });
+        if (minIntervalMs > 0) nextAttempt = now() + minIntervalMs;
+        return (lastResult = { status: "ok", capturedAt });
+      } catch (err) {
+        return (lastResult = { status: classifyCliError(err) });
       }
     })().finally(() => { pending = null; });
     return pending;
   };
 }
-module.exports = { SOURCE, parseCliUsage, createCliQuotaRefresh, normalizeCliGroup };
+module.exports = { SOURCE, parseCliUsage, createCliQuotaRefresh, normalizeCliGroup, classifyCliError };
