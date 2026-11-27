@@ -2984,8 +2984,8 @@ const openDashboardSessionFolder = createSessionFolderOpener({
 });
 
 const _dashboard = require("./dashboard")({
-  defaultWidth: 880,
-  defaultHeight: 620,
+  defaultWidth: 1000,
+  defaultHeight: 680,
   get lang() { return lang; },
   t: (key) => translate(key),
   getSessionSnapshot: () => _state.buildSessionSnapshot(),

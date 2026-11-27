@@ -312,11 +312,13 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
     ipcMain.on("chat:dismiss", (event) => { if (fromWindow(event)) win.hide(); });
     ipcMain.on("chat:blurred", (event) => {
       // The box behaves like a launcher and leaves when focus does.
-      if (fromWindow(event)) win.hide();
+      if (fromWindow(event) && Date.now() - openedAt > 500) win.hide();
     });
   }
 
+  let openedAt = 0;
   function open() {
+    openedAt = Date.now();
     if (win && !win.isDestroyed()) {
       if (typeof win.isVisible === "function" && !win.isVisible()) placeNearTop();
       if (typeof win.setTitle === "function") win.setTitle(resolveWindowTitle());

@@ -450,7 +450,8 @@ function createSettingsWindowRuntime(options = {}) {
       // Match settings.html's dark-mode palette to avoid a white flash before
       // CSS media query kicks in. Hex values must stay in sync with the
       // `--bg` CSS variable in settings.html for each theme.
-      backgroundColor: nativeTheme.shouldUseDarkColors ? "#1c1c1f" : "#f5f5f7",
+      backgroundColor: nativeTheme.shouldUseDarkColors ? "#141517" : "#f7f7f5",
+      ...(process.platform === "darwin" ? { titleBarStyle: "hiddenInset", trafficLightPosition: { x: 16, y: 16 } } : {}),
       webPreferences: {
         preload: preloadPath,
         nodeIntegration: false,

@@ -17,8 +17,8 @@ const DEFAULT_HEIGHT = 600;
 const MIN_WIDTH = 320;
 const MIN_HEIGHT = 400;
 const BOUNDS_SAVE_DEBOUNCE_MS = 500;
-const LIGHT_BACKGROUND = "#f5f5f7";
-const DARK_BACKGROUND = "#1c1c1f";
+const LIGHT_BACKGROUND = "#f7f7f5";
+const DARK_BACKGROUND = "#141517";
 
 function getDashboardBackgroundColor() {
   return nativeTheme.shouldUseDarkColors ? DARK_BACKGROUND : LIGHT_BACKGROUND;
@@ -458,7 +458,7 @@ module.exports = function initDashboard(ctx) {
       // macOS: the pet app mostly lives in the background, so the first click
       // on the inactive Dashboard window must reach the page instead of only
       // activating the window — same treatment the permission prompts get.
-      ...(platform === "darwin" ? { acceptFirstMouse: true } : {}),
+      ...(platform === "darwin" ? { acceptFirstMouse: true, titleBarStyle: "hiddenInset", trafficLightPosition: { x: 16, y: 16 } } : {}),
       title: typeof ctx.t === "function" ? ctx.t("dashboardWindowTitle") : "Sessions",
       backgroundColor: getDashboardBackgroundColor(),
       webPreferences: {

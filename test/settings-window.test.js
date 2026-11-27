@@ -294,7 +294,7 @@ test("settings window runtime creates the Settings BrowserWindow with taskbar id
   assert.strictEqual(win.options.y, 70);
   assert.strictEqual(win.options.width, 800);
   assert.strictEqual(win.options.height, 660);
-  assert.strictEqual(win.options.backgroundColor, "#1c1c1f");
+  assert.strictEqual(win.options.backgroundColor, "#141517");
   assert.strictEqual(win.options.webPreferences.preload, "C:\\app\\src\\preload-settings.js");
   assert.strictEqual(win.options.webPreferences.nodeIntegration, false);
   assert.strictEqual(win.options.acceptFirstMouse, undefined,

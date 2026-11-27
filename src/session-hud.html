@@ -1,8 +1,9 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<link rel="stylesheet" href="ui-tokens.css">
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; img-src 'self' data: file:;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data: file:;">
 <title>Session HUD</title>
 <style>
 * { box-sizing: border-box; }
@@ -10,7 +11,6 @@
 :root {
   --hud-bg: rgba(255, 255, 255, 0.88);
   --hud-border: rgba(0, 0, 0, 0.12);
-  --text: #242427;
   --text-muted: #6b6b70;
   --shadow: rgba(0, 0, 0, 0.16);
   --running: #16a34a;
@@ -23,7 +23,6 @@
   :root {
     --hud-bg: rgba(32, 32, 36, 0.88);
     --hud-border: rgba(255, 255, 255, 0.12);
-    --text: #f4f4f5;
     --text-muted: #a1a1aa;
     --shadow: rgba(0, 0, 0, 0.34);
     --done: #60a5fa;
@@ -389,6 +388,7 @@ body { padding: 2px 3px 8px; }
   }
 }
 </style>
+<link rel="stylesheet" href="ui-bubble-theme.css">
 </head>
 <body>
   <div id="hud" class="hud"></div>

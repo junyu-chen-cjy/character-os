@@ -250,12 +250,12 @@ describe("dashboard window", () => {
 
     dashboard.showDashboard();
     const createdWindow = getCreatedWindow();
-    assert.strictEqual(createdWindow.opts.backgroundColor, "#f5f5f7");
+    assert.strictEqual(createdWindow.opts.backgroundColor, "#f7f7f5");
 
     nativeTheme.shouldUseDarkColors = true;
     nativeTheme.emit("updated");
 
-    assert.deepStrictEqual(createdWindow.backgroundColors, ["#f5f5f7", "#1c1c1f"]);
+    assert.deepStrictEqual(createdWindow.backgroundColors, ["#f7f7f5", "#141517"]);
   });
 
   it("centers the dashboard on the pet work area by default", () => {

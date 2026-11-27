@@ -1,0 +1,61 @@
+/* Maps the legacy per-window variables of the floating surfaces (permission
+   bubble, queue, update bubble, session HUD, confirmation) onto the shared
+   tokens. Loaded last so these windows follow the same palette and materials. */
+:root {
+  --card-bg: var(--float);
+  --card-border: var(--line-2);
+  --card-shadow: var(--shadow-float);
+  --card-inset: none;
+  --text-primary: var(--text);
+  --text-secondary: var(--text-2);
+  --text-tertiary: var(--text-3);
+  --text-main: var(--text);
+  --text-muted: var(--text-3);
+  --header-color: var(--text);
+  --cmd-bg: var(--hover);
+  --cmd-border: var(--line);
+  --cmd-color: var(--text-2);
+  --cmd-shadow: none;
+  --scroll-thumb: var(--scroll);
+  --scroll-thumb-hover: var(--scroll-hi);
+  --allow-bg: var(--accent);
+  --allow-hover: var(--accent-hi);
+  --allow-ink: var(--on-accent);
+  --primary-bg: var(--accent);
+  --primary-hover-bg: var(--accent-hi);
+  --danger-bg: var(--bad);
+  --danger-hover-bg: var(--bad);
+  --deny-bg: var(--hover);
+  --deny-color: var(--text);
+  --deny-border: var(--line);
+  --deny-hover-bg: var(--press);
+  --deny-hover-border: var(--line-2);
+  --sug-bg: var(--hover);
+  --sug-color: var(--text-2);
+  --sug-border: var(--line);
+  --sug-hover-bg: var(--press);
+  --sug-hover-border: var(--line-2);
+  --sug-hover-color: var(--text);
+  --sug-arrow: var(--text-3);
+  --irreversible-color: var(--warn);
+  --irreversible-bg: color-mix(in srgb, var(--warn) 12%, transparent);
+  --irreversible-border: color-mix(in srgb, var(--warn) 38%, transparent);
+  --row-bg: var(--hover);
+  --row-border: var(--line);
+  --row-hover: var(--press);
+  --surface-subtle: var(--surface-2);
+  --border: var(--line-2);
+  --border-strong: var(--line-2);
+  --accent-strong: var(--accent-hi);
+  --accent-soft: var(--accent-bg);
+  --danger: var(--bad);
+  --danger-hover: var(--bad);
+  --hud-bg: var(--float);
+  --hud-border: var(--line-2);
+  --text-muted: var(--text-3);
+  --running: var(--accent);
+  --done: var(--ok);
+  --interrupted: var(--warn);
+  --idle: var(--text-3);
+}
+html, body { font-family: var(--font); }

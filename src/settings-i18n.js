@@ -1484,7 +1484,7 @@
       settingsTutorialReplayFailed: "无法打开新手指南",
       sidebarGeneral: "通用",
       productModels: "模型",
-      productAgents: "Agents",
+      productAgents: "智能体",
       productData: "数据",
       productCharacter: "角色",
       productGeneralSubtitle: "语言、外观主题、开机启动与提示音。",
