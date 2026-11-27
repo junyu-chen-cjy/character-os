@@ -29,7 +29,6 @@ const SERVICE_NAMES = Object.freeze({
   "antigravity-gemini": "Antigravity · Gemini",
   "antigravity-claude-gpt": "Antigravity · Claude / GPT",
   "gemini-chat": "Gemini Chat",
-  "chatgpt-chat": "ChatGPT Chat",
 });
 
 function normalizeClientKey(raw) {
@@ -332,7 +331,6 @@ function createAgentTools({
         if (filter === "antigravity" || filter === "agy") return row.id.startsWith("antigravity-");
         if (filter === "claude" || filter === "gpt" || filter === "thirdparty") return row.id === "antigravity-claude-gpt";
         if (filter === "gemini") return row.id === "antigravity-gemini" || row.id === "gemini-chat";
-        if (filter === "chatgpt") return row.id === "chatgpt-chat";
         return row.id.includes(filter);
       });
 
@@ -585,13 +583,13 @@ function createAgentTools({
     },
     get_quota: {
       name: "get_quota",
-      description: "Read real AI service quota data across Codex Agent, Antigravity Gemini, Antigravity Claude/GPT, Gemini Chat, and ChatGPT Chat (honestly reporting disabled or unknown windows without fabricating percentages).",
+      description: "Read real AI service quota data across Codex Agent, Antigravity Gemini, Antigravity Claude/GPT, and Gemini Chat (honestly reporting disabled or missing windows without fabricating percentages).",
       parameters: {
         type: "object",
         properties: {
           service: {
             type: "string",
-            description: "Optional filter: 'all', 'codex', 'antigravity', 'claude', 'gemini', or 'chatgpt'.",
+            description: "Optional filter: 'all', 'codex', 'antigravity', 'claude', or 'gemini'.",
           },
         },
       },

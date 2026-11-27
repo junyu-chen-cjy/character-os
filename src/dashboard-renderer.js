@@ -85,7 +85,6 @@ const WS_STRINGS = {
     quotaSvcAgGemini: "Antigravity · Gemini",
     quotaSvcAgThird: "Antigravity · Claude / GPT",
     quotaSvcGeminiChat: "Gemini Chat",
-    quotaSvcChatgpt: "ChatGPT Chat",
     quotaUpdatedAt: "Updated {time}",
     geminiChat: "Gemini Chat",
     geminiChatUsage: "Open Gemini Usage Limits",
@@ -150,7 +149,6 @@ const WS_STRINGS = {
     quotaSvcAgGemini: "Antigravity · Gemini",
     quotaSvcAgThird: "Antigravity · Claude / GPT",
     quotaSvcGeminiChat: "Gemini 日常聊天",
-    quotaSvcChatgpt: "ChatGPT 日常聊天",
     quotaUpdatedAt: "更新于 {time}",
     geminiChat: "Gemini 日常聊天",
     geminiChatUsage: "打开 Gemini 用量页",
@@ -1190,7 +1188,6 @@ function renderQuotaSummary(snapshot) {
       "antigravity-gemini": "quotaSvcAgGemini",
       "antigravity-claude-gpt": "quotaSvcAgThird",
       "gemini-chat": "quotaSvcGeminiChat",
-      "chatgpt-chat": "quotaSvcChatgpt",
     };
 
     for (const item of unified) {
@@ -1220,7 +1217,7 @@ function renderQuotaSummary(snapshot) {
       row.className = "quota-group-row";
 
       if (item.unknown) {
-        row.appendChild(createText("div", "note", item.id === "chatgpt-chat" ? wt("quotaUnknown") : wt("quotaNoData")));
+        row.appendChild(createText("div", "note", wt("quotaNoData")));
       } else {
         const halves = document.createElement("div");
         halves.className = "quota-halves";
@@ -2855,7 +2852,6 @@ function appendOverviewQuotasSection(fragment, now) {
     "antigravity-gemini": "quotaSvcAgGemini",
     "antigravity-claude-gpt": "quotaSvcAgThird",
     "gemini-chat": "quotaSvcGeminiChat",
-    "chatgpt-chat": "quotaSvcChatgpt",
   };
 
   for (const item of unified) {
@@ -2874,11 +2870,7 @@ function appendOverviewQuotasSection(fragment, now) {
     const slotsEl = document.createElement("span");
     slotsEl.className = "overview-quota-slots";
     if (item.unknown) {
-      slotsEl.appendChild(createText(
-        "span",
-        "overview-quota-val is-empty",
-        item.id === "chatgpt-chat" ? wt("quotaUnknown") : wt("quotaNoData")
-      ));
+      slotsEl.appendChild(createText("span", "overview-quota-val is-empty", wt("quotaNoData")));
     } else {
       for (const [slot, fallbackTag] of [[item.shortWindow, "5h"], [item.weeklyWindow, "7d"]]) {
         if (!slot) continue;

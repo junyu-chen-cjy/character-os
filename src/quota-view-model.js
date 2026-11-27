@@ -217,8 +217,8 @@
     };
   }
 
-  // Canonical 5-row quota view shared by both the Pet Halo and Workspace
-  // (Overview + Quotas Detail) so both surfaces never diverge.
+  // Canonical 4-row quota view shared by Pet Halo, Workspace (Overview + Detail),
+  // and Personal Agent get_quota so all surfaces stay strictly consistent.
   function buildUnifiedQuotaRows(sources, now = Date.now()) {
     const list = Array.isArray(sources) ? sources : [];
     const hasCli = list.some((s) => s && s.antigravityCliQuota && s.antigravityCliQuota.group);
@@ -248,7 +248,6 @@
         agThirdUsesCli ? agThirdCli : agThirdFallback
       ),
       finalizeUnifiedRow("gemini-chat", "geminiChatQuota", geminiChatData),
-      finalizeUnifiedRow("chatgpt-chat", "chatgptQuota", { shortWindow: null, weeklyWindow: null, source: "" }),
     ];
   }
 

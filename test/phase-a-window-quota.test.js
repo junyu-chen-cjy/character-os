@@ -62,7 +62,6 @@ describe("Phase A: unified 5-row quota view model", () => {
       "antigravity-gemini",
       "antigravity-claude-gpt",
       "gemini-chat",
-      "chatgpt-chat",
     ]);
 
     assert.equal(rows[0].shortWindow.remaining, 72);
@@ -79,10 +78,6 @@ describe("Phase A: unified 5-row quota view model", () => {
 
     assert.equal(rows[3].shortWindow.remaining, 80);
     assert.equal(rows[3].weeklyWindow.remaining, 90);
-
-    assert.equal(rows[4].unknown, true);
-    assert.equal(rows[4].shortWindow, null);
-    assert.equal(rows[4].weeklyWindow, null);
   });
 });
 

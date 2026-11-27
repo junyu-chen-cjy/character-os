@@ -12,7 +12,6 @@
       svcAgGemini: "AG · Gemini",
       svcAgThird: "AG · Claude/GPT",
       svcGeminiChat: "Gemini Chat",
-      svcChatgpt: "ChatGPT",
       resetsIn: "resets in {t}",
       resetsOn: "resets {d}",
       dH: "{h}h",
@@ -33,7 +32,6 @@
       svcAgGemini: "AG · Gemini",
       svcAgThird: "AG · Claude/GPT",
       svcGeminiChat: "Gemini 聊天",
-      svcChatgpt: "ChatGPT",
       resetsIn: "{t}后重置",
       resetsOn: "{d}重置",
       dH: "{h}小时",
@@ -54,7 +52,6 @@
       svcAgGemini: "AG · Gemini",
       svcAgThird: "AG · Claude/GPT",
       svcGeminiChat: "Gemini 聊天",
-      svcChatgpt: "ChatGPT",
       resetsIn: "{t}後重置",
       resetsOn: "{d}重置",
       dH: "{h}小時",
@@ -75,7 +72,6 @@
       svcAgGemini: "AG · Gemini",
       svcAgThird: "AG · Claude/GPT",
       svcGeminiChat: "Gemini チャット",
-      svcChatgpt: "ChatGPT",
       resetsIn: "{t}後にリセット",
       resetsOn: "{d}にリセット",
       dH: "{h}時間",
@@ -96,7 +92,6 @@
       svcAgGemini: "AG · Gemini",
       svcAgThird: "AG · Claude/GPT",
       svcGeminiChat: "Gemini 채팅",
-      svcChatgpt: "ChatGPT",
       resetsIn: "{t} 후 초기화",
       resetsOn: "{d} 초기화",
       dH: "{h}시간",
@@ -114,7 +109,6 @@
     "antigravity-gemini": "svcAgGemini",
     "antigravity-claude-gpt": "svcAgThird",
     "gemini-chat": "svcGeminiChat",
-    "chatgpt-chat": "svcChatgpt",
   };
 
   const shellEl = document.getElementById("haloShell");
@@ -264,7 +258,7 @@
 
       const slots = el("div", "q-slots");
       if (item.unknown) {
-        slots.appendChild(el("span", "q-none", item.id === "chatgpt-chat" ? t("unknown") : t("noData")));
+        slots.appendChild(el("span", "q-none", t("noData")));
       } else {
         const shortChip = buildSlotChip(item.shortWindow, "5h");
         const weeklyChip = buildSlotChip(item.weeklyWindow, "7d");

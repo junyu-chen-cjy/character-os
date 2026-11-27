@@ -88,10 +88,10 @@ describe("Phase B3: Agent session, quota, and delegation tools", () => {
     assert.equal(listRes.liveCount, 2);
 
     const quotaRes = await tools.get_quota.execute({ service: "all" });
-    assert.equal(quotaRes.services.length, 5);
+    assert.equal(quotaRes.services.length, 4);
     assert.equal(quotaRes.services.find((s) => s.id === "codex").shortWindow.remainingPercent, 75);
     assert.equal(quotaRes.services.find((s) => s.id === "antigravity-claude-gpt").shortWindow.status, "disabled");
-    assert.equal(quotaRes.services.find((s) => s.id === "chatgpt-chat").status, "unknown");
+    assert.equal(quotaRes.services.some((s) => s.id === "chatgpt-chat"), false);
 
     // Ambiguous target (two Codex sessions) asks for disambiguation instead of guessing!
     const ambig = await tools.send_agent_message.prepareConfirmation({
