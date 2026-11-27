@@ -20,6 +20,7 @@ function handleBrowserQuota(req, res, publish) {
       const group = parseUsageRows(text, updated, observedAt);
       if (!group) throw Error();
       publish(GEMINI_CHAT_SOURCE, {displayHost:"Gemini · Chrome background", geminiChatQuota:group});
+      console.info("Character OS: Gemini background quota received", new Date(observedAt).toISOString());
       res.writeHead(204, headers); res.end();
     } catch { res.writeHead(400, headers); res.end(); }
   });
