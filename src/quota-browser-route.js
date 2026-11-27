@@ -4,20 +4,24 @@ const { id } = require("./quota-extension-id.json");
 const { parseUsageRows, GEMINI_CHAT_SOURCE } = require("./gemini-chat-quota");
 const ORIGIN = `chrome-extension://${id}`;
 
-function handleBrowserQuota(req, res, publish) {
+function handleBrowserQuota(req, res, publish, getPolicy) {
   const local = ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(req.socket.remoteAddress);
   if (!local || req.headers.origin !== ORIGIN) {
     res.writeHead(403);
     res.end();
     return;
   }
+  const policy = typeof getPolicy === "function"
+    ? getPolicy()
+    : { shouldRefresh: true, mode: "idle", desiredIntervalMs: 600_000, minIntervalMs: 60_000, nextCheckMinutes: 2 };
   const headers = {
     "Access-Control-Allow-Origin": ORIGIN,
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, X-Character-Quota",
-    "Access-Control-Expose-Headers": "X-Character-Quota",
+    "Access-Control-Expose-Headers": "X-Character-Quota, X-Quota-Next-Minutes",
     "Access-Control-Allow-Private-Network": "true",
     "X-Character-Quota": "1",
+    "X-Quota-Next-Minutes": String(policy?.nextCheckMinutes || 2),
     "Vary": "Origin",
   };
   if (req.method === "OPTIONS") {
@@ -25,8 +29,17 @@ function handleBrowserQuota(req, res, publish) {
     res.end();
     return;
   }
-  if (req.method !== "POST" || req.headers["x-character-quota"] !== "1"
-      || !req.headers["content-type"]?.startsWith("application/json")) {
+  if (req.headers["x-character-quota"] !== "1") {
+    res.writeHead(400, headers);
+    res.end();
+    return;
+  }
+  if (req.method === "GET") {
+    res.writeHead(200, { ...headers, "Content-Type": "application/json" });
+    res.end(JSON.stringify(policy));
+    return;
+  }
+  if (req.method !== "POST" || !req.headers["content-type"]?.startsWith("application/json")) {
     res.writeHead(400, headers);
     res.end();
     return;

@@ -2436,20 +2436,6 @@ function deliverRendererThemeConfig() {
 
 const codexProfiles = loadCodexProfiles({ logWarn: console.warn });
 let quotaRefreshManager;
-let quotaSessionBadges = new Map();
-function observeSessionsForQuotaRefresh(sessionList) {
-  const next = new Map();
-  for (const s of sessionList ?? []) {
-    if (!s || s.host || s.startupRecovered || s.headless) continue;
-    const prev = quotaSessionBadges.get(s.id);
-    if (prev === "running" && s.badge === "done") {
-      if (s.agentId === "codex") quotaRefreshManager?.nudgeSource("codex", 8000);
-      else if (s.agentId === "antigravity-cli") quotaRefreshManager?.nudgeSource("antigravity", 12000);
-    }
-    next.set(s.id, s.badge);
-  }
-  quotaSessionBadges = next;
-}
 const _stateCtx = {
   get theme() { return getActiveTheme(); },
   get win() { return win; },
@@ -2511,7 +2497,7 @@ const _stateCtx = {
   buildTrayMenu: () => buildTrayMenu(),
   debugLog: (msg) => sessionLog(msg),
   broadcastSessionSnapshot: (snapshot) => {
-    observeSessionsForQuotaRefresh(snapshot.sessions);
+    quotaRefreshManager?.observeSessions(snapshot.sessions);
     const geminiEntry = snapshot?.accountQuota?.find((s) => s && s.geminiChatQuota && s.geminiChatQuota.lastSeenAt);
     if (geminiEntry) {
       quotaRefreshManager?.noteExternalObservation("geminiChat", geminiEntry.geminiChatQuota.lastSeenAt);
@@ -2997,6 +2983,7 @@ const _dashboard = require("./dashboard")({
     } catch { return null; }
   },
   onBeforeShow: () => { if (typeof chatWindow !== "undefined" && chatWindow) chatWindow.hide(); },
+  onQuotaSurfaceShown: (reason) => quotaRefreshManager?.onUserInspect(reason),
   getPetWindowBounds,
   getNearestWorkArea,
   getSettingsWindow: () => settingsWindowRuntime.getWindow(),
@@ -3051,6 +3038,7 @@ const _petHalo = initPetHalo({
   t: (key) => translate(key),
   openDashboard: (options) => showDashboard(options),
   openChat: () => chatWindow.open(),
+  onQuotaSurfaceShown: (reason) => quotaRefreshManager?.onUserInspect(reason),
   getPetWindowBounds,
   getHitRectScreen,
   getSessionHudAnchorRect,
@@ -3179,6 +3167,7 @@ const _serverCtx = {
   clearClaudeStatuslineAuthority: (profileId) => _state.clearClaudeStatuslineAuthority(profileId),
   clearLocalClaudeQuota: () => _state.clearLocalClaudeQuota(),
   updateAccountQuota: (host, quotas) => _state.updateAccountQuota(host, quotas),
+  getGeminiBrowserPolicy: () => quotaRefreshManager?.getGeminiBrowserPolicy(),
   resolvePermissionEntry,
   sendPermissionResponse,
   addPendingPermission,
@@ -5275,15 +5264,14 @@ const refreshGeminiChatAccessibility = isMac ? createGeminiChatQuotaRefresh({
 quotaRefreshManager = createQuotaRefreshManager({
   powerMonitor,
   systemIdleState: systemIdleStateForQuota,
+  getAccountQuotaSnapshot: () => _state.buildSessionSnapshot().accountQuota,
   sources: {
     codex: {
       kind: "active",
-      intervalMs: 5 * 60 * 1000,
       refresh: () => refreshCodexQuota(),
     },
     antigravity: {
       kind: "active",
-      intervalMs: 5 * 60 * 1000,
       refresh: async ({ force }) => {
         const result = await refreshAntigravityCli({ force });
         if (result.status === "ok" || result.status === "auth-required" || result.status === "network-error") {
@@ -5298,7 +5286,6 @@ quotaRefreshManager = createQuotaRefreshManager({
     },
     geminiChat: {
       kind: "passive",
-      intervalMs: 10 * 60 * 1000,
     },
   },
 });

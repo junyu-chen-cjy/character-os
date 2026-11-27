@@ -10,7 +10,11 @@ const {
   queryCodexAppServerRateLimits,
 } = require("../src/codex-app-server-quota");
 const { createCliQuotaRefresh, classifyCliError } = require("../src/antigravity-cli-quota");
-const { createQuotaRefreshManager } = require("../src/quota-refresh-manager");
+const {
+  QUOTA_REFRESH_POLICY,
+  createQuotaRefreshManager,
+} = require("../src/quota-refresh-manager");
+const { handleBrowserQuota, ORIGIN } = require("../src/quota-browser-route");
 
 describe("Codex active app-server quota query", () => {
   it("parses official account/rateLimits/read primary (5h) and secondary (7d) windows", () => {
@@ -194,6 +198,134 @@ describe("Antigravity CLI & Unified Quota Refresh Manager", () => {
     assert.equal(manual.results.antigravity.status, "ok");
     assert.equal(manual.results.geminiChat.passive, true);
     assert.equal(manual.results.geminiChat.status, "extension-managed");
+
+    mgr.stop();
+  });
+
+  it("applies dynamic active (60s), idle (300s), near-reset (45s), completion, hover-freshness, min-interval, and Gemini browser policy", async () => {
+    let clock = 1_795_800_000_000;
+    let codexCalls = 0;
+    let agyCalls = 0;
+    let accountQuota = [];
+
+    const mgr = createQuotaRefreshManager({
+      now: () => clock,
+      startupDelayMs: 0,
+      wakeSettleMs: 0,
+      getAccountQuotaSnapshot: () => accountQuota,
+      setIntervalFn: () => ({ unref() {} }),
+      clearIntervalFn: () => {},
+      sources: {
+        codex: {
+          kind: "active",
+          policy: { completionDelayMs: 0 },
+          refresh: async () => {
+            codexCalls += 1;
+            return { status: "ok", capturedAt: clock };
+          },
+        },
+        antigravity: {
+          kind: "active",
+          policy: { completionDelayMs: 0 },
+          refresh: async () => {
+            agyCalls += 1;
+            return { status: "ok", capturedAt: clock };
+          },
+        },
+        geminiChat: {
+          kind: "passive",
+        },
+      },
+    });
+
+    // Policy defaults match dynamic targets
+    assert.equal(QUOTA_REFRESH_POLICY.codex.activeMs, 60_000);
+    assert.equal(QUOTA_REFRESH_POLICY.codex.idleMs, 300_000);
+    assert.equal(QUOTA_REFRESH_POLICY.antigravity.activeMs, 60_000);
+    assert.equal(QUOTA_REFRESH_POLICY.antigravity.idleMs, 300_000);
+    assert.equal(QUOTA_REFRESH_POLICY.geminiChat.activeMs, 120_000);
+    assert.equal(QUOTA_REFRESH_POLICY.geminiChat.idleMs, 600_000);
+
+    // Startup refresh
+    mgr.start();
+    await new Promise((r) => setTimeout(r, 10));
+    assert.equal(codexCalls, 1);
+    assert.equal(agyCalls, 1);
+    assert.equal(mgr.getStatusSnapshot().codex.mode, "idle");
+
+    // Min-interval prevents hammering right after completion (10s < 15s floor)
+    clock += 10_000;
+    const skipped = await mgr.refreshSource("codex", { force: false });
+    assert.equal(skipped.skipped, true);
+    assert.equal(codexCalls, 1);
+
+    // Idle mode does NOT refresh at 90s (< 300s)
+    clock += 80_000; // +90s total
+    await mgr.pollDue();
+    assert.equal(codexCalls, 1);
+
+    // Session active -> switches to 60s active cadence and refreshes immediately on poll
+    mgr.observeSessions([{ id: "c1", agentId: "codex", badge: "running" }]);
+    assert.equal(mgr.getStatusSnapshot().codex.mode, "active");
+    await mgr.pollDue();
+    assert.equal(codexCalls, 2);
+
+    // Task completion (running -> done) triggers immediate refresh once past min-interval
+    clock += 20_000;
+    mgr.observeSessions([{ id: "c1", agentId: "codex", badge: "done" }]);
+    await new Promise((r) => setTimeout(r, 10));
+    assert.equal(codexCalls, 3);
+
+    // Pet hover / Workspace open triggers async refresh ONLY for sources older than hoverFreshnessMs
+    clock += 50_000; // codex age 50s (>= 45s), agy age 160s (>= 60s)
+    const triggered = mgr.onUserInspect("pet-halo-hover");
+    await new Promise((r) => setTimeout(r, 10));
+    assert.deepEqual(triggered.sort(), ["antigravity", "codex"]);
+    assert.equal(codexCalls, 4);
+    assert.equal(agyCalls, 2);
+
+    // Hover again 5s later -> fresh enough, triggers nothing!
+    clock += 5_000;
+    const triggeredAgain = mgr.onUserInspect("pet-halo-hover");
+    assert.deepEqual(triggeredAgain, []);
+
+    // Near-reset acceleration: bucket resetAt in 2 min -> switches to near-reset (45s)
+    accountQuota = [{
+      codexQuota: {
+        group: {
+          codexFiveHour: { usedPercent: 95, windowMinutes: 300, resetAt: clock + 120_000, lastSeenAt: clock - 5_000 },
+        },
+      },
+    }];
+    assert.equal(mgr.getStatusSnapshot().codex.mode, "near-reset");
+    assert.equal(mgr.getStatusSnapshot().codex.desiredIntervalMs, 45_000);
+
+    // Gemini Chrome browser policy: idle (<10m) => shouldRefresh=false; active (>=2m) => shouldRefresh=true
+    mgr.noteExternalObservation("geminiChat", clock);
+    clock += 3 * 60_000; // 3m later, still within 10m activeGrace from hover above => active mode (2m) => shouldRefresh=true
+    let pol = mgr.getGeminiBrowserPolicy();
+    assert.equal(pol.mode, "active");
+    assert.equal(pol.shouldRefresh, true);
+
+    // Verify GET /quota/gemini-browser serves policy to pinned extension origin only
+    let statusCode = 0;
+    let bodyOut = "";
+    handleBrowserQuota(
+      { method: "GET", headers: { origin: ORIGIN, "x-character-quota": "1" }, socket: { remoteAddress: "127.0.0.1" } },
+      { writeHead(code) { statusCode = code; }, end(str) { bodyOut = str || ""; } },
+      () => {},
+      () => mgr.getGeminiBrowserPolicy()
+    );
+    assert.equal(statusCode, 200);
+    assert.equal(JSON.parse(bodyOut).shouldRefresh, true);
+
+    // Advance past activeGraceMs (15m after last activity) and record fresh observation -> idle mode (10m)
+    clock += 15 * 60_000;
+    mgr.noteExternalObservation("geminiChat", clock);
+    clock += 3 * 60_000; // only 3m since last sync while idle (< 10m) => zero tabs opened!
+    pol = mgr.getGeminiBrowserPolicy();
+    assert.equal(pol.mode, "idle");
+    assert.equal(pol.shouldRefresh, false);
 
     mgr.stop();
   });

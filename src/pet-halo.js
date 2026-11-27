@@ -415,9 +415,13 @@ function initPetHalo(ctx) {
           hwin.setBounds(computed.bounds);
           if (options.sendSnapshot !== false) sendHaloState(snapshot);
           showPanelInactive(hwin);
+          const wasVisible = haloVisibleLogical;
           haloVisibleLogical = true;
           sendHaloVisibility(true);
           notifyReservedOffsetIfChanged();
+          if (!wasVisible && typeof ctx.onQuotaSurfaceShown === "function") {
+            try { ctx.onQuotaSurfaceShown("pet-halo-hover"); } catch {}
+          }
         }
       }
     } else if (options.immediateHide) {

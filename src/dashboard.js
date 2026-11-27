@@ -723,6 +723,9 @@ module.exports = function initDashboard(ctx) {
 
   function showDashboard(options = {}) {
     if (typeof ctx.onBeforeShow === "function") ctx.onBeforeShow();
+    if (typeof ctx.onQuotaSurfaceShown === "function") {
+      try { ctx.onQuotaSurfaceShown("workspace-open"); } catch {}
+    }
     // An ordinary open always wins over an in-flight quick round: return the
     // page and restore opacity/input before the window takes the keyboard, so
     // the user never focuses a blank parked host.
