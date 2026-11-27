@@ -178,4 +178,109 @@ describe("Phase B3: Agent session, quota, and delegation tools", () => {
     assert.equal(res.deliveryStatus, "needs_accessibility");
     assert.equal(res.executionStatus, "not_started");
   });
+
+  it("wires list_agent_sessions, get_agent_status, and send_agent_message onto Agent Registry v2 including blank drafts", async () => {
+    const { createCodexAdapter } = require("../src/agent-integration/codex-adapter");
+    const { createAntigravityAdapter } = require("../src/agent-integration/antigravity-adapter");
+    const { createAgentRegistry } = require("../src/agent-integration/agent-registry");
+
+    const deliveredCalls = [];
+    const platformAdapter = {
+      platform: "darwin",
+      isMac: true,
+      getAccessibilityStatus: () => ({
+        platform: "darwin",
+        supported: true,
+        trusted: true,
+        appDisplayName: "Character OS",
+        appBundlePath: "/Applications/Character OS.app",
+      }),
+      findInstalledAppPath: (paths) => paths[0],
+      inspectDesktopApp: async ({ bundleId }) => {
+        if (bundleId === "com.openai.codex") {
+          return {
+            status: "ok",
+            running: true,
+            pid: 86011,
+            isBlankDraft: true,
+            hasComposer: true,
+            activeProjectName: "character-os",
+            sidebarProjects: ["character-os"],
+            sidebarSessions: [],
+          };
+        }
+        return {
+          status: "ok",
+          running: true,
+          pid: 37274,
+          isBlankDraft: false,
+          hasComposer: true,
+          activeConversationTitle: "Character OS UI/UX Redesign",
+          activeProjectName: "character-os",
+          sidebarProjects: ["character-os"],
+          sidebarSessions: [{ title: "Character OS UI/UX Redesign", label: "Conversation: Character OS UI/UX Redesign" }],
+        };
+      },
+      deliverDesktopMessage: async (opts) => {
+        deliveredCalls.push(opts);
+        return { status: "ok", deliveryStatus: "delivered", verifiedInConversation: true, composerCleared: true };
+      },
+    };
+
+    const registry = createAgentRegistry({
+      platformAdapter,
+      adapters: [
+        createCodexAdapter({
+          platformAdapter,
+          queryThreadsFn: async () => ({ status: "ok", threads: [] }),
+          readLocalProjectsFn: () => [],
+        }),
+        createAntigravityAdapter({
+          platformAdapter,
+          readLocalConversationsFn: () => [],
+        }),
+      ],
+    });
+
+    const tools = createAgentTools({ agentRegistry: registry });
+
+    const listed = await tools.list_agent_sessions.execute({});
+    assert.equal(listed.status, "ok");
+    assert.equal(listed.clients.length, 2);
+    assert.equal(listed.liveCount, 2);
+    const draft = listed.liveSessions.find((s) => s.sessionKey === "codex:active-draft");
+    assert.ok(draft);
+    assert.equal(draft.isBlankDraft, true);
+    assert.equal(draft.sessionId, null);
+
+    // Target Codex blank draft explicitly via session_key
+    const confirm = await tools.send_agent_message.prepareConfirmation({
+      client: "codex",
+      session_key: "codex:active-draft",
+      message: "Connectivity ping",
+    });
+    assert.ok(confirm.confirm);
+    assert.equal(confirm.confirm.isBlankDraft, true);
+    assert.equal(confirm.confirm.bundleId, "com.openai.codex");
+
+    const sent = await tools.send_agent_message.execute({
+      client: "codex",
+      session_key: "codex:active-draft",
+      message: "Connectivity ping",
+    });
+    assert.equal(sent.status, "ok");
+    assert.equal(sent.stage, "delivered");
+    assert.equal(sent.executionStatus, "pending_observation");
+    assert.equal(deliveredCalls.length, 1);
+    assert.equal(deliveredCalls[0].bundleId, "com.openai.codex");
+    assert.equal(deliveredCalls[0].isBlankDraft, true);
+
+    // Target standalone Antigravity strictly via com.google.antigravity
+    const agySent = await tools.send_agent_message.execute({
+      client: "antigravity",
+      message: "Ping Antigravity",
+    });
+    assert.equal(agySent.status, "ok");
+    assert.equal(deliveredCalls[1].bundleId, "com.google.antigravity");
+  });
 });

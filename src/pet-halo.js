@@ -28,7 +28,7 @@ const LINUX_WINDOW_TYPE = "toolbar";
 
 const MAC_AGENT_CLIENTS = Object.freeze([
   { id: "codex", label: "Codex", kind: "agent", args: ["-b", "com.openai.codex"] },
-  { id: "antigravity", label: "Antigravity", kind: "app", args: ["-b", "com.google.GeminiMacOS"] },
+  { id: "antigravity", label: "Antigravity", kind: "app", args: ["-b", "com.google.antigravity"] },
 ]);
 
 function clamp(value, min, max) {
@@ -167,10 +167,22 @@ function deferMacFloatingVisibility(ctx, win) {
   }, MAC_FLOATING_TOPMOST_DELAY_MS);
 }
 
-function launchAgentClientApp(clientId, { t, showDashboard } = {}) {
+async function launchAgentClientApp(clientId, { t, showDashboard, agentRegistry } = {}) {
+  const entry = MAC_AGENT_CLIENTS.find((c) => c.id === clientId);
+  if (agentRegistry && typeof agentRegistry.launchClient === "function") {
+    const res = await agentRegistry.launchClient(clientId);
+    if (res && res.status === "ok") return res;
+    if (typeof dialog?.showErrorBox === "function" && entry) {
+      const tr = typeof t === "function" ? t : (k) => k;
+      dialog.showErrorBox(
+        tr("openAgentClientFailed").replace("{app}", entry.label),
+        tr("openAgentClientCheckInstallation")
+      );
+    }
+    return { status: "error", reason: "launch-failed", error: res?.error || "" };
+  }
   if (isMac) {
-    const entry = MAC_AGENT_CLIENTS.find((c) => c.id === clientId);
-    if (!entry) return Promise.resolve({ status: "error", reason: "unknown-client" });
+    if (!entry) return { status: "error", reason: "unknown-client" };
     return new Promise((resolve) => {
       execFile("/usr/bin/open", entry.args, (error) => {
         if (error) {
@@ -189,7 +201,7 @@ function launchAgentClientApp(clientId, { t, showDashboard } = {}) {
     });
   }
   if (typeof showDashboard === "function") showDashboard({ source: "halo-client" });
-  return Promise.resolve({ status: "ok", fallback: "workspace" });
+  return { status: "ok", fallback: "workspace" };
 }
 
 function initPetHalo(ctx) {
@@ -637,6 +649,7 @@ function initPetHalo(ctx) {
         return launchAgentClientApp(String(payload.clientId || ""), {
           t: ctx.t,
           showDashboard: ctx.openDashboard,
+          agentRegistry: ctx.agentRegistry,
         });
       }
       return { status: "error" };

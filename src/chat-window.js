@@ -54,16 +54,20 @@ function summarizeStepForUi(step) {
     } else if (step.tool === "list_agent_sessions") {
       out.liveCount = Number(r.liveCount) || 0;
       out.recentCount = Number(r.recentCount) || 0;
+      out.onlineClientCount = Array.isArray(r.clients) ? r.clients.filter((c) => c && c.running).length : 0;
     } else if (step.tool === "get_agent_status") {
       out.sessionCount = Array.isArray(r.sessions) ? r.sessions.length : 0;
     } else if (step.tool === "get_quota") {
       out.serviceCount = Array.isArray(r.services) ? r.services.length : 0;
     } else if (step.tool === "send_agent_message") {
+      out.stage = r.stage || "";
       out.deliveryStatus = r.deliveryStatus || r.status || "";
       out.executionStatus = r.executionStatus || "";
+      out.verifiedInConversation = Boolean(r.verifiedInConversation);
       out.clientLabel = r.clientLabel || r.client || "";
       out.project = r.project || "";
       out.sessionTitle = r.sessionTitle || "";
+      out.isBlankDraft = Boolean(r.isBlankDraft);
       if (r.status === "ambiguous" && Array.isArray(r.candidates)) {
         out.ambiguousCount = r.candidates.length;
       }

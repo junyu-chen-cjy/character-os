@@ -140,6 +140,41 @@ const WS_STRINGS = {
     reading: "Reading…",
     readAt: "Read {time}",
     projectsMore: "All projects",
+    agentClientsTitle: "Agent Clients",
+    agentSessionsTitle: "Desktop & CLI Sessions",
+    refreshClients: "Refresh",
+    refreshingClients: "Refreshing…",
+    clientOnline: "Online",
+    clientRunning: "Running task",
+    clientAwaiting: "Awaiting approval",
+    clientOffline: "Offline",
+    clientNotInstalled: "Not installed",
+    clientOpen: "Open",
+    clientFocus: "Focus",
+    clientSessionCount: "{n} session(s)",
+    clientActiveDraft: "Current blank chat",
+    clientNoActiveSession: "No active conversation",
+    kindDesktop: "Desktop",
+    kindCli: "CLI",
+    badgeCurrent: "Current",
+    badgeBlankDraft: "Blank draft",
+    badgeResumable: "Resumable",
+    stageLocated: "Located",
+    stageConfirmed: "Confirmed",
+    stageDelivered: "Delivered",
+    stageStarted: "Running",
+    stageAwaitingApproval: "Awaiting approval",
+    stageCompleted: "Completed",
+    stageFailed: "Delivery failed",
+    axLabel: "macOS Accessibility",
+    axTrusted: "Authorized",
+    axMissing: "Permission needed",
+    axTitle: "macOS Accessibility permission required",
+    axBody: "Grant {app} access in macOS Privacy & Security → Accessibility to inspect active desktop conversations and deliver delegated tasks.",
+    axDevNote: "Running in development mode — authorize Electron.app below (re-toggle if updated).",
+    axOpenSettings: "Open Accessibility Settings",
+    axRevealApp: "Show App in Finder",
+    axRecheck: "Re-check",
   },
   zh: {
     quotaRefreshAll: "刷新全部额度",
@@ -212,6 +247,41 @@ const WS_STRINGS = {
     reading: "读取中…",
     readAt: "读取于 {time}",
     projectsMore: "全部项目",
+    agentClientsTitle: "Agent 客户端",
+    agentSessionsTitle: "桌面与 CLI 会话",
+    refreshClients: "刷新",
+    refreshingClients: "刷新中…",
+    clientOnline: "在线",
+    clientRunning: "运行任务中",
+    clientAwaiting: "等待审批",
+    clientOffline: "离线",
+    clientNotInstalled: "未安装",
+    clientOpen: "打开",
+    clientFocus: "切换过去",
+    clientSessionCount: "{n} 个会话",
+    clientActiveDraft: "当前空白对话",
+    clientNoActiveSession: "暂无活跃对话",
+    kindDesktop: "桌面",
+    kindCli: "CLI",
+    badgeCurrent: "当前显示",
+    badgeBlankDraft: "当前空白对话",
+    badgeResumable: "可恢复",
+    stageLocated: "已定位",
+    stageConfirmed: "已确认",
+    stageDelivered: "已投递",
+    stageStarted: "执行中",
+    stageAwaitingApproval: "待审批",
+    stageCompleted: "已完成",
+    stageFailed: "投递失败",
+    axLabel: "macOS 辅助功能",
+    axTrusted: "已授权",
+    axMissing: "需要授权",
+    axTitle: "需要 macOS 辅助功能权限",
+    axBody: "请在「系统设置 → 隐私与安全性 → 辅助功能」中勾选 {app}，以识别 Codex / Antigravity 当前对话并向目标会话可靠发送消息。",
+    axDevNote: "当前处于开发运行模式，请在列表中授权下方 Electron.app（如已添加可取消后重新勾选）。",
+    axOpenSettings: "打开辅助功能设置",
+    axRevealApp: "在 Finder 中显示应用",
+    axRecheck: "重新检测",
   },
 };
 
@@ -2618,44 +2688,74 @@ async function reloadWorkspaceContext() {
 
 function collectProjectsModel(sessions, historyRows) {
   const byCwd = new Map();
+  const byName = new Map();
+  const findOrCreate = (cwd, name) => {
+    const cleanCwd = typeof cwd === "string" ? cwd.trim() : "";
+    const cleanName = typeof name === "string" ? name.trim() : "";
+    if (!cleanCwd && !cleanName) return null;
+    const baseName = cleanCwd ? sessionHistoryFolderLabel(cleanCwd) : cleanName;
+    const nameKey = (cleanName || baseName || "").toLowerCase();
+    const baseKey = (baseName || "").toLowerCase();
+    let rec = (cleanCwd && byCwd.get(cleanCwd))
+      || (nameKey && byName.get(nameKey))
+      || (baseKey && byName.get(baseKey))
+      || null;
+    if (!rec) {
+      rec = {
+        cwd: cleanCwd,
+        name: cleanName || baseName || cleanCwd,
+        activeSessions: [],
+        historyItems: [],
+        clients: new Set(),
+        registrySessionCount: 0,
+        updatedAt: 0,
+      };
+      if (cleanCwd) byCwd.set(cleanCwd, rec);
+      if (nameKey) byName.set(nameKey, rec);
+      if (baseKey) byName.set(baseKey, rec);
+    } else {
+      if (!rec.cwd && cleanCwd) {
+        rec.cwd = cleanCwd;
+        byCwd.set(cleanCwd, rec);
+      }
+      if (nameKey && !byName.has(nameKey)) byName.set(nameKey, rec);
+      if (baseKey && !byName.has(baseKey)) byName.set(baseKey, rec);
+    }
+    return rec;
+  };
+
   for (const s of sessions) {
     const cwd = s && typeof s.cwd === "string" ? s.cwd.trim() : "";
     if (!cwd) continue;
-    let rec = byCwd.get(cwd);
-    if (!rec) {
-      rec = {
-        cwd,
-        name: s.displayFolder || sessionHistoryFolderLabel(cwd) || cwd,
-        activeSessions: [],
-        historyItems: [],
-        updatedAt: 0,
-      };
-      byCwd.set(cwd, rec);
-    }
+    const rec = findOrCreate(cwd, s.displayFolder || sessionHistoryFolderLabel(cwd));
+    if (!rec) continue;
     rec.activeSessions.push(s);
     rec.updatedAt = Math.max(rec.updatedAt, Number(s.updatedAt) || 0);
   }
   for (const h of historyRows) {
     const cwd = h && typeof h.cwd === "string" ? h.cwd.trim() : "";
     if (!cwd) continue;
-    let rec = byCwd.get(cwd);
-    if (!rec) {
-      rec = {
-        cwd,
-        name: sessionHistoryFolderLabel(cwd) || cwd,
-        activeSessions: [],
-        historyItems: [],
-        updatedAt: 0,
-      };
-      byCwd.set(cwd, rec);
-    }
+    const rec = findOrCreate(cwd, sessionHistoryFolderLabel(cwd));
+    if (!rec) continue;
     rec.historyItems.push(h);
     rec.updatedAt = Math.max(rec.updatedAt, Number(h.lastEventAt) || 0);
   }
-  return Array.from(byCwd.values()).sort((a, b) => {
-    if ((b.activeSessions.length > 0) !== (a.activeSessions.length > 0)) {
-      return b.activeSessions.length > 0 ? 1 : -1;
+  const regProjects = workspaceCtx?.agentRegistry?.projects;
+  if (Array.isArray(regProjects)) {
+    for (const p of regProjects) {
+      const rec = findOrCreate(p.cwd, p.name);
+      if (!rec) continue;
+      for (const c of p.clients || []) rec.clients.add(c);
+      rec.registrySessionCount = Math.max(rec.registrySessionCount, Number(p.sessionCount) || 0);
+      if (p.activeCount > 0) rec.updatedAt = Math.max(rec.updatedAt, Date.now());
     }
+  }
+  const unique = Array.from(new Set([...byCwd.values(), ...byName.values()]));
+  return unique.sort((a, b) => {
+    const aLive = a.activeSessions.length > 0 ? 1 : 0;
+    const bLive = b.activeSessions.length > 0 ? 1 : 0;
+    if (bLive !== aLive) return bLive - aLive;
+    if (b.registrySessionCount !== a.registrySessionCount) return b.registrySessionCount - a.registrySessionCount;
     return b.updatedAt - a.updatedAt;
   });
 }
@@ -2729,6 +2829,333 @@ function appendPendingApprovalsSection(fragment, now) {
   fragment.appendChild(panel);
 }
 
+let refreshingAgentRegistry = false;
+
+async function runAgentRegistryRefresh() {
+  if (refreshingAgentRegistry || typeof window.dashboardAPI?.workspaceAction !== "function") return;
+  refreshingAgentRegistry = true;
+  render({ force: true });
+  try {
+    await window.dashboardAPI.workspaceAction({ type: "refresh-agent-registry" });
+    await reloadWorkspaceContext();
+  } catch {
+    // ignore transient error
+  } finally {
+    refreshingAgentRegistry = false;
+    lastWorkspaceRailSig = "";
+    render({ force: true });
+  }
+}
+
+function clientIconUrlFor(clientId) {
+  const icons = (snapshot && snapshot.quotaAgentIcons) || {};
+  if (clientId === "codex" && icons.codexQuota) return icons.codexQuota;
+  if (clientId === "antigravity" && icons.antigravityQuota) return icons.antigravityQuota;
+  const ag = workspaceCtx?.agents?.find((a) =>
+    (clientId === "codex" && a.id === "codex")
+    || (clientId === "antigravity" && (a.id === "antigravity-cli" || a.id === "antigravity"))
+  );
+  return ag?.iconUrl || "";
+}
+
+function formatClientStatus(status) {
+  switch (status) {
+    case "running_task": return { text: wt("clientRunning"), tone: "is-live" };
+    case "awaiting_approval": return { text: wt("clientAwaiting"), tone: "is-warn" };
+    case "online": return { text: wt("clientOnline"), tone: "is-ready" };
+    case "not_installed": return { text: wt("clientNotInstalled"), tone: "" };
+    default: return { text: wt("clientOffline"), tone: "" };
+  }
+}
+
+function formatDelegationStage(stage) {
+  switch (stage) {
+    case "located": return { text: wt("stageLocated"), isWarn: false };
+    case "confirmed": return { text: wt("stageConfirmed"), isWarn: false };
+    case "delivered": return { text: wt("stageDelivered"), isWarn: false };
+    case "started": return { text: wt("stageStarted"), isWarn: false };
+    case "awaiting_approval": return { text: wt("stageAwaitingApproval"), isWarn: true };
+    case "completed": return { text: wt("stageCompleted"), isWarn: false };
+    case "failed": return { text: wt("stageFailed"), isWarn: true };
+    default: return null;
+  }
+}
+
+function createAccessibilityActionButtons() {
+  const wrap = document.createElement("div");
+  wrap.className = "ax-guide-actions";
+
+  const openBtn = document.createElement("button");
+  openBtn.type = "button";
+  openBtn.className = "secondary-btn";
+  openBtn.textContent = wt("axOpenSettings");
+  openBtn.addEventListener("click", () => {
+    void window.dashboardAPI?.workspaceAction({ type: "open-accessibility-settings" });
+  });
+
+  const revealBtn = document.createElement("button");
+  revealBtn.type = "button";
+  revealBtn.className = "secondary-btn";
+  revealBtn.textContent = wt("axRevealApp");
+  revealBtn.addEventListener("click", () => {
+    void window.dashboardAPI?.workspaceAction({ type: "reveal-accessibility-app" });
+  });
+
+  const recheckBtn = document.createElement("button");
+  recheckBtn.type = "button";
+  recheckBtn.className = "secondary-btn";
+  recheckBtn.textContent = wt("axRecheck");
+  recheckBtn.addEventListener("click", async () => {
+    await window.dashboardAPI?.workspaceAction({ type: "recheck-accessibility" }).catch(() => {});
+    await reloadWorkspaceContext();
+    lastWorkspaceRailSig = "";
+    render({ force: true });
+  });
+
+  wrap.append(openBtn, revealBtn, recheckBtn);
+  return wrap;
+}
+
+function appendAccessibilityGuideBanner(fragment) {
+  const ax = workspaceCtx?.agentRegistry?.accessibility;
+  if (!ax || !ax.supported || ax.trusted) return;
+
+  const card = document.createElement("section");
+  card.className = "ax-guide-card";
+  card.appendChild(createText("div", "ax-guide-title", wt("axTitle")));
+  const appLabel = ax.appDisplayName || "Character OS";
+  card.appendChild(createText("div", "ax-guide-body", wt("axBody").replace("{app}", appLabel)));
+  if (ax.isDevElectron) {
+    card.appendChild(createText("div", "ax-guide-body", wt("axDevNote")));
+  }
+  if (ax.appBundlePath) {
+    card.appendChild(createText("div", "ax-guide-path", ax.appBundlePath));
+  }
+  card.appendChild(createAccessibilityActionButtons());
+  fragment.appendChild(card);
+}
+
+function appendAgentClientsSection(fragment) {
+  const clients = workspaceCtx?.agentRegistry?.clients;
+  if (!Array.isArray(clients) || !clients.length) return;
+
+  const section = document.createElement("section");
+  section.className = "group ws-clients-section";
+
+  const head = document.createElement("div");
+  head.className = "block-head";
+  head.appendChild(createText("h2", "group-title", wt("agentClientsTitle")));
+  const refreshBtn = document.createElement("button");
+  refreshBtn.type = "button";
+  refreshBtn.className = "ui-btn quiet";
+  refreshBtn.style.height = "24px";
+  refreshBtn.disabled = refreshingAgentRegistry;
+  refreshBtn.textContent = refreshingAgentRegistry ? wt("refreshingClients") : wt("refreshClients");
+  refreshBtn.addEventListener("click", () => void runAgentRegistryRefresh());
+  head.appendChild(refreshBtn);
+  section.appendChild(head);
+
+  const grid = document.createElement("div");
+  grid.className = "client-cards";
+
+  for (const client of clients) {
+    const card = document.createElement("article");
+    card.className = "client-card";
+    card.dataset.clientId = client.id;
+
+    const top = document.createElement("div");
+    top.className = "client-card-head";
+
+    const titleWrap = document.createElement("div");
+    titleWrap.className = "client-card-title";
+    const iconUrl = clientIconUrlFor(client.id);
+    if (iconUrl) {
+      const img = document.createElement("img");
+      img.src = iconUrl;
+      img.alt = "";
+      img.addEventListener("error", () => img.remove(), { once: true });
+      titleWrap.appendChild(img);
+    }
+    titleWrap.appendChild(document.createTextNode(client.name));
+
+    const st = formatClientStatus(client.status);
+    top.append(titleWrap, createText("span", `status-pill ${st.tone}`.trim(), st.text));
+    card.appendChild(top);
+
+    let summary = wt("clientNoActiveSession");
+    if (client.running) {
+      if (client.isBlankDraft) {
+        summary = client.activeProjectName
+          ? `${wt("clientActiveDraft")} · ${client.activeProjectName}`
+          : wt("clientActiveDraft");
+      } else if (client.activeSessionTitle) {
+        summary = client.activeProjectName
+          ? `${client.activeSessionTitle} · ${client.activeProjectName}`
+          : client.activeSessionTitle;
+      }
+    }
+    const sumEl = createText("div", "client-card-summary", summary);
+    sumEl.title = summary;
+    card.appendChild(sumEl);
+
+    const foot = document.createElement("div");
+    foot.className = "client-card-foot";
+    foot.appendChild(createText("span", "", wt("clientSessionCount").replace("{n}", String(client.sessionCount || 0))));
+
+    const actionBtn = document.createElement("button");
+    actionBtn.type = "button";
+    actionBtn.className = "secondary-btn";
+    actionBtn.textContent = client.running ? wt("clientFocus") : wt("clientOpen");
+    actionBtn.addEventListener("click", () => {
+      void window.dashboardAPI?.workspaceAction({ type: "launch-client", clientId: client.id });
+    });
+    foot.appendChild(actionBtn);
+    card.appendChild(foot);
+
+    grid.appendChild(card);
+  }
+
+  section.appendChild(grid);
+  fragment.appendChild(section);
+}
+
+function getDeduplicatedRegistrySessions(hookSessions) {
+  const regSessions = workspaceCtx?.agentRegistry?.sessions;
+  if (!Array.isArray(regSessions) || !regSessions.length) return [];
+  const hookIds = new Set();
+  for (const h of hookSessions || []) {
+    if (!h) continue;
+    if (h.id) hookIds.add(h.id);
+    if (h.rawSessionId) hookIds.add(h.rawSessionId);
+  }
+  return regSessions.filter((s) => {
+    if (!s) return false;
+    if (s.sessionId && hookIds.has(s.sessionId)) return false;
+    if (s.rawSessionId && hookIds.has(s.rawSessionId)) return false;
+    return true;
+  });
+}
+
+function appendRegistrySessionsSection(fragment, hookSessions, now) {
+  const items = getDeduplicatedRegistrySessions(hookSessions);
+  if (!items.length) return;
+
+  const limit = workspaceView === "sessions" ? 20 : 8;
+  const visible = items.slice(0, limit);
+
+  const section = document.createElement("section");
+  section.className = "group ws-registry-sessions";
+  section.appendChild(createText("h2", "group-title", wt("agentSessionsTitle")));
+
+  const cards = document.createElement("div");
+  cards.className = "cards";
+
+  for (const s of visible) {
+    const card = document.createElement("article");
+    card.className = "card";
+    card.dataset.sessionKey = s.key;
+
+    const iconUrl = clientIconUrlFor(s.clientId);
+    if (iconUrl) {
+      const img = document.createElement("img");
+      img.className = "agent-icon";
+      img.src = iconUrl;
+      img.alt = s.clientName || "";
+      img.addEventListener("error", () => img.remove(), { once: true });
+      card.appendChild(img);
+    } else {
+      card.appendChild(createText("div", "agent-fallback", (s.clientName || "?").slice(0, 2).toUpperCase()));
+    }
+
+    const main = document.createElement("div");
+    main.className = "main";
+
+    const titleText = s.isBlankDraft ? wt("badgeBlankDraft") : (s.title || s.projectName || s.clientName);
+    const titleNode = createText("div", "session-title", titleText);
+    titleNode.title = titleText;
+    main.appendChild(titleNode);
+
+    const meta = document.createElement("div");
+    meta.className = "meta";
+
+    const badge = document.createElement("span");
+    const badgeTone = s.status === "running"
+      ? "badge-running"
+      : s.status === "done"
+        ? "badge-done"
+        : s.status === "awaiting_approval" || s.status === "interrupted"
+          ? "badge-interrupted"
+          : "";
+    badge.className = `badge${badgeTone ? ` ${badgeTone}` : ""}`;
+    badge.appendChild(createText("span", "dot", ""));
+    const statusLabel = s.status === "blank_draft"
+      ? wt("badgeBlankDraft")
+      : s.status === "resumable"
+        ? wt("badgeResumable")
+        : s.status === "awaiting_approval"
+          ? wt("clientAwaiting")
+          : s.status === "running"
+            ? t("badgeRunning")
+            : s.status === "done"
+              ? t("badgeDone")
+              : wt("idle");
+    badge.appendChild(document.createTextNode(statusLabel));
+    meta.appendChild(badge);
+
+    meta.appendChild(createText("span", "source-badge", s.clientName));
+    meta.appendChild(createText("span", "source-badge", s.kind === "cli" ? wt("kindCli") : wt("kindDesktop")));
+    if (s.isCurrentVisible) {
+      meta.appendChild(createText("span", "source-badge registry-tag-current", wt("badgeCurrent")));
+    }
+    if (s.projectName) {
+      meta.appendChild(createText("span", "source-badge", s.projectName));
+    }
+    const stageInfo = s.lastDelegation ? formatDelegationStage(s.lastDelegation.stage) : null;
+    if (stageInfo) {
+      meta.appendChild(createText(
+        "span",
+        `source-badge registry-tag-stage${stageInfo.isWarn ? " is-warn" : ""}`,
+        stageInfo.text
+      ));
+    }
+    if (s.updatedAt && !s.isBlankDraft) {
+      meta.appendChild(document.createTextNode(formatElapsed(Math.max(0, now - s.updatedAt))));
+    }
+    main.appendChild(meta);
+
+    if (s.cwd) {
+      const pathNode = createText("div", "path", s.cwd);
+      pathNode.title = s.cwd;
+      main.appendChild(pathNode);
+    }
+
+    card.appendChild(main);
+
+    if (s.canFocus) {
+      const actions = document.createElement("div");
+      actions.className = "actions";
+      const focusBtn = document.createElement("button");
+      focusBtn.type = "button";
+      focusBtn.textContent = wt("focusSession");
+      focusBtn.addEventListener("click", () => {
+        void window.dashboardAPI?.workspaceAction({
+          type: "focus-registry-session",
+          clientId: s.clientId,
+          sessionKey: s.key,
+          sessionId: s.sessionId || "",
+        });
+      });
+      actions.appendChild(focusBtn);
+      card.appendChild(actions);
+    }
+
+    cards.appendChild(card);
+  }
+
+  section.appendChild(cards);
+  fragment.appendChild(section);
+}
+
 function appendProjectsSection(fragment, sessions) {
   if (!wsBodyEl) return;
   const projects = collectProjectsModel(sessions, sessionHistory);
@@ -2759,8 +3186,13 @@ function appendProjectsSection(fragment, sessions) {
     pathEl.title = proj.cwd;
 
     const metaParts = [];
+    if (proj.clients && proj.clients.size > 0) {
+      metaParts.push(Array.from(proj.clients).map((c) => (c === "codex" ? "Codex" : c === "antigravity" ? "Antigravity" : c)).join(" / "));
+    }
     if (proj.activeSessions.length > 0) {
       metaParts.push(wt("projectActiveCount").replace("{n}", proj.activeSessions.length));
+    } else if (proj.registrySessionCount > 0) {
+      metaParts.push(wt("clientSessionCount").replace("{n}", proj.registrySessionCount));
     } else if (proj.historyItems.length > 0) {
       metaParts.push(wt("projectRecentCount").replace("{n}", proj.historyItems.length));
     }
@@ -2771,18 +3203,20 @@ function appendProjectsSection(fragment, sessions) {
     const actions = document.createElement("div");
     actions.className = "project-actions";
 
-    const openBtn = document.createElement("button");
-    openBtn.type = "button";
-    openBtn.className = "open-folder-button";
-    openBtn.textContent = t("dashboardOpenFolder");
-    openBtn.addEventListener("click", () => {
-      if (proj.activeSessions[0] && canOfferLocalFolder(proj.activeSessions[0])) {
-        void window.dashboardAPI.openSessionFolder(proj.activeSessions[0].id);
-      } else if (window.dashboardAPI && typeof window.dashboardAPI.workspaceAction === "function") {
-        void window.dashboardAPI.workspaceAction({ type: "open-known-folder", cwd: proj.cwd });
-      }
-    });
-    actions.appendChild(openBtn);
+    if (proj.cwd) {
+      const openBtn = document.createElement("button");
+      openBtn.type = "button";
+      openBtn.className = "open-folder-button";
+      openBtn.textContent = t("dashboardOpenFolder");
+      openBtn.addEventListener("click", () => {
+        if (proj.activeSessions[0] && canOfferLocalFolder(proj.activeSessions[0])) {
+          void window.dashboardAPI.openSessionFolder(proj.activeSessions[0].id);
+        } else if (window.dashboardAPI && typeof window.dashboardAPI.workspaceAction === "function") {
+          void window.dashboardAPI.workspaceAction({ type: "open-known-folder", cwd: proj.cwd });
+        }
+      });
+      actions.appendChild(openBtn);
+    }
 
     const focusable = proj.activeSessions.find((s) => s && s.canFocus);
     if (focusable) {
@@ -2990,8 +3424,12 @@ function renderWorkspaceChrome(sessions) {
   if (wsStatusDotEl) wsStatusDotEl.hidden = true;
   if (countEl) {
     const tags = [];
+    const onlineClients = (workspaceCtx?.agentRegistry?.clients || []).filter((c) => c && c.running);
     if (approvalsCount > 0) tags.push(["warn", wt("awaiting").replace("{n}", approvalsCount)]);
     if (runningCount > 0) tags.push(["live", wt("running").replace("{n}", runningCount)]);
+    if (!tags.length && onlineClients.length > 0) {
+      tags.push(["live", `${onlineClients.map((c) => c.name).join(" · ")} ${wt("clientOnline")}`]);
+    }
     if (!tags.length) tags.push(["", wt("idle")]);
     countEl.replaceChildren(...tags.map(([tone, text]) => {
       const tag = document.createElement("span");
@@ -3004,8 +3442,10 @@ function renderWorkspaceChrome(sessions) {
   }
   const sessionsCountEl = wsNavEl && wsNavEl.querySelector("[data-ws-count='sessions']");
   if (sessionsCountEl) {
-    sessionsCountEl.hidden = sessions.length === 0;
-    sessionsCountEl.textContent = String(sessions.length);
+    const extraActive = getDeduplicatedRegistrySessions(sessions).filter((s) => s.status !== "resumable").length;
+    const totalVisibleSessions = sessions.length + extraActive;
+    sessionsCountEl.hidden = totalVisibleSessions === 0;
+    sessionsCountEl.textContent = String(totalVisibleSessions);
     sessionsCountEl.className = `nav-count${approvalsCount > 0 ? " warn" : runningCount > 0 ? " live" : ""}`;
   }
   const footIcons = (snapshot && snapshot.quotaAgentIcons) || {};
@@ -3089,10 +3529,13 @@ function renderWorkspaceChrome(sessions) {
   }
 
   const sys = (workspaceCtx && workspaceCtx.system) || {};
+  const regSnap = workspaceCtx?.agentRegistry || null;
   const railSig = JSON.stringify({
     lang: (i18nPayload && i18nPayload.lang) || "en",
     serverPort: sys.serverPort || 0,
     agents: workspaceCtx && workspaceCtx.agents,
+    regClients: (regSnap?.clients || []).map((c) => [c.id, c.status, c.running, c.sessionCount]),
+    ax: regSnap?.accessibility ? [regSnap.accessibility.supported, regSnap.accessibility.trusted, regSnap.accessibility.appDisplayName] : null,
   });
 
   if (railSig === lastWorkspaceRailSig) return;
@@ -3101,7 +3544,7 @@ function renderWorkspaceChrome(sessions) {
   if (wsRuntimeListEl) {
     wsRuntimeListEl.replaceChildren();
 
-    // Only show real, actionable runtime status: local hook server + connected agents.
+    // Only show real, actionable runtime status: local hook server, desktop clients, macOS Accessibility, and hooks.
     const bridgeRow = document.createElement("div");
     bridgeRow.className = "runtime-row";
     bridgeRow.append(
@@ -3115,6 +3558,48 @@ function renderWorkspaceChrome(sessions) {
       )
     );
     wsRuntimeListEl.appendChild(bridgeRow);
+
+    if (Array.isArray(regSnap?.clients)) {
+      for (const c of regSnap.clients) {
+        const r = document.createElement("div");
+        r.className = "runtime-row";
+        const left = document.createElement("span");
+        left.className = "runtime-left";
+        const ico = clientIconUrlFor(c.id);
+        if (ico) {
+          const img = document.createElement("img");
+          img.src = ico;
+          img.alt = "";
+          img.addEventListener("error", () => img.remove(), { once: true });
+          left.appendChild(img);
+        }
+        left.appendChild(document.createTextNode(c.name));
+        const st = formatClientStatus(c.status);
+        r.append(left, createText("span", `status-pill ${st.tone}`.trim(), st.text));
+        wsRuntimeListEl.appendChild(r);
+      }
+    }
+
+    if (regSnap?.accessibility?.supported) {
+      const ax = regSnap.accessibility;
+      const axBlock = document.createElement("div");
+      axBlock.className = "runtime-ax-block";
+      const top = document.createElement("div");
+      top.className = "runtime-ax-top";
+      top.append(
+        createText("span", "runtime-left", wt("axLabel")),
+        createText("span", `status-pill ${ax.trusted ? "is-ready" : "is-warn"}`, ax.trusted ? wt("axTrusted") : wt("axMissing"))
+      );
+      axBlock.appendChild(top);
+      if (!ax.trusted) {
+        const appLabel = ax.appDisplayName || "Character OS";
+        axBlock.appendChild(createText("div", "runtime-ax-note", wt("axBody").replace("{app}", appLabel)));
+        const actions = createAccessibilityActionButtons();
+        actions.className = "runtime-ax-actions";
+        axBlock.appendChild(actions);
+      }
+      wsRuntimeListEl.appendChild(axBlock);
+    }
 
     if (workspaceCtx && Array.isArray(workspaceCtx.agents)) {
       for (const ag of workspaceCtx.agents) {
@@ -3264,12 +3749,17 @@ function render(options = {}) {
     return;
   }
 
+  const regClients = workspaceCtx?.agentRegistry?.clients || [];
+  const regSessions = getDeduplicatedRegistrySessions(sessions);
+  const hasRegistryContent = isWsDom && (regClients.length > 0 || regSessions.length > 0);
+
   // A round with a frozen presentation keeps rendering its own groups even if
   // every session in them disappeared — the numbered slots still belong to
   // this round and must not collapse into the generic empty state.
-  if (count === 0 && orphanCount === 0 && approvalsCount === 0 && !(quick.active && quick.skeleton)) {
+  if (count === 0 && orphanCount === 0 && approvalsCount === 0 && !hasRegistryContent && !(quick.active && quick.skeleton)) {
     if (isWsDom && workspaceView === "overview") {
       const layout = createOverviewLayout();
+      appendAccessibilityGuideBanner(layout.main);
       const empty = document.createElement("div");
       empty.className = "empty";
       empty.append(
@@ -3291,14 +3781,23 @@ function render(options = {}) {
   const fragment = document.createDocumentFragment();
 
   appendPendingApprovalsSection(fragment, now);
-  // Overview: sessions and history on the left, quotas and projects in a rail.
+  // Overview: clients, sessions and history on the left, quotas and projects in a rail.
   // While a round is on, the groups come from its frozen presentation; the
   // ordinary dynamic ordering resumes as soon as it ends.
   const overview = isWsDom && workspaceView === "overview";
   const layout = overview ? createOverviewLayout() : null;
   const mainHost = layout ? layout.main : fragment;
+  if (isWsDom) {
+    appendAccessibilityGuideBanner(mainHost);
+    appendAgentClientsSection(mainHost);
+  }
   if (layout && !quick.active) appendOverviewQuotasSection(layout.rail, now);
-  appendSessionGroups(mainHost, byId, now);
+  if (count > 0 || (quick.active && quick.skeleton)) {
+    appendSessionGroups(mainHost, byId, now);
+  }
+  if (isWsDom) {
+    appendRegistrySessionsSection(mainHost, sessions, now);
+  }
   if (layout) appendProjectsSection(layout.rail, sessions);
   appendSessionAutomationOrphans(mainHost);
   appendSessionHistory(mainHost, now);
@@ -3364,7 +3863,17 @@ async function init() {
   setInterval(render, 1000);
   if (hasWorkspaceDom()) {
     setInterval(() => {
-      void reloadWorkspaceContext().then(() => renderWorkspaceChrome(snapshot.sessions || []));
+      const prevRegAt = workspaceCtx?.agentRegistry?.updatedAt || 0;
+      const prevAxTrusted = workspaceCtx?.agentRegistry?.accessibility?.trusted;
+      void reloadWorkspaceContext().then(() => {
+        const nextRegAt = workspaceCtx?.agentRegistry?.updatedAt || 0;
+        const nextAxTrusted = workspaceCtx?.agentRegistry?.accessibility?.trusted;
+        if (nextRegAt !== prevRegAt || nextAxTrusted !== prevAxTrusted) {
+          render();
+        } else {
+          renderWorkspaceChrome(snapshot.sessions || []);
+        }
+      });
     }, 3000);
   }
 

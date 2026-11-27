@@ -17,10 +17,10 @@ const CLIENT_CONFIG = Object.freeze({
   },
   antigravity: {
     id: "antigravity",
-    label: "Antigravity (Gemini App)",
+    label: "Antigravity",
     agentIds: new Set(["antigravity-cli", "antigravity", "gemini-cli"]),
-    bundleId: "com.google.GeminiMacOS",
-    processNames: ["Gemini"],
+    bundleId: "com.google.antigravity",
+    processNames: ["Antigravity"],
   },
 });
 
@@ -201,6 +201,7 @@ async function deliverMessageViaMacAccessibility({
 }
 
 function createAgentTools({
+  agentRegistry = null,
   getSessionSnapshot,
   getPendingPermissions,
   listResumableSessions,
@@ -214,6 +215,34 @@ function createAgentTools({
   // Tracks dispatched messages so get_agent_status can distinguish:
   //   sent (delivered to UI) -> started (observed running) -> completed (observed done)
   const delegations = new Map();
+
+  function mapRegistrySessionForTool(s) {
+    return {
+      sessionKey: s.key,
+      id: s.sessionId || s.key,
+      sessionId: s.sessionId,
+      rawSessionId: s.rawSessionId,
+      agentId: s.agentId,
+      client: s.clientId,
+      clientName: s.clientName,
+      kind: s.kind,
+      isBlankDraft: Boolean(s.isBlankDraft),
+      isCurrentVisible: Boolean(s.isCurrentVisible),
+      title: s.isBlankDraft ? "(Current blank chat)" : s.title,
+      cwd: s.cwd || "",
+      projectName: s.projectName || "",
+      status: s.status,
+      badge: s.badge || "idle",
+      lastEvent: s.lastEvent || "",
+      lastEventAt: s.updatedAt || null,
+      canFocus: Boolean(s.canFocus),
+      canDelegate: Boolean(s.canDelegate),
+      isLive: s.status !== "resumable",
+      source: s.source || "",
+      pendingApprovals: Array.isArray(s.pendingApprovals) ? s.pendingApprovals : [],
+      lastDelegation: s.lastDelegation || null,
+    };
+  }
 
   function getLiveSessions() {
     const snap = typeof getSessionSnapshot === "function" ? getSessionSnapshot() : { sessions: [] };
@@ -250,6 +279,54 @@ function createAgentTools({
     const agentFilter = normalizeClientKey(args.agent);
     const projectFilter = typeof args.project === "string" ? args.project.trim().toLowerCase() : "";
     const includeRecent = args.include_recent !== false;
+
+    if (agentRegistry && typeof agentRegistry.refresh === "function") {
+      const snap = await agentRegistry.refresh({ force: args.force === true });
+      const clients = (snap.clients || [])
+        .filter((c) => !agentFilter || c.id === agentFilter)
+        .map((c) => ({
+          id: c.id,
+          name: c.name,
+          bundleId: c.bundleId,
+          installed: Boolean(c.installed),
+          running: Boolean(c.running),
+          status: c.status,
+          hasComposer: Boolean(c.hasComposer),
+          isBlankDraft: Boolean(c.isBlankDraft),
+          activeSessionTitle: c.activeSessionTitle || "",
+          activeProjectName: c.activeProjectName || "",
+          sessionCount: Number(c.sessionCount) || 0,
+        }));
+
+      const matches = (s) => {
+        if (agentFilter && s.clientId !== agentFilter) return false;
+        if (projectFilter) {
+          const hay = `${s.projectName || ""} ${s.cwd || ""} ${s.title || ""}`.toLowerCase();
+          if (!hay.includes(projectFilter)) return false;
+        }
+        return true;
+      };
+
+      const matched = (snap.sessions || []).filter(matches).map(mapRegistrySessionForTool);
+      const liveSessions = matched.filter((s) => s.isLive);
+      const recentSessions = includeRecent ? matched.filter((s) => !s.isLive).slice(0, 12) : [];
+
+      return {
+        status: "ok",
+        accessibility: snap.accessibility
+          ? {
+            trusted: Boolean(snap.accessibility.trusted),
+            appDisplayName: snap.accessibility.appDisplayName || "",
+            appBundlePath: snap.accessibility.appBundlePath || "",
+          }
+          : null,
+        clients,
+        liveCount: liveSessions.length,
+        recentCount: recentSessions.length,
+        liveSessions,
+        recentSessions,
+      };
+    }
 
     const live = getLiveSessions();
     let recent = [];
@@ -291,8 +368,56 @@ function createAgentTools({
 
   async function getAgentStatus(args = {}) {
     const sessionId = typeof args.session_id === "string" ? args.session_id.trim() : "";
+    const sessionKey = typeof args.session_key === "string" ? args.session_key.trim() : "";
     const agentFilter = normalizeClientKey(args.agent);
     const projectFilter = typeof args.project === "string" ? args.project.trim().toLowerCase() : "";
+
+    if (agentRegistry && typeof agentRegistry.refresh === "function") {
+      const snap = await agentRegistry.refresh({ force: args.force === true });
+      const pending = typeof getPendingPermissions === "function" ? getPendingPermissions() : [];
+      const clients = (snap.clients || [])
+        .filter((c) => !agentFilter || c.id === agentFilter)
+        .map((c) => ({
+          id: c.id,
+          name: c.name,
+          bundleId: c.bundleId,
+          installed: Boolean(c.installed),
+          running: Boolean(c.running),
+          status: c.status,
+          hasComposer: Boolean(c.hasComposer),
+          isBlankDraft: Boolean(c.isBlankDraft),
+          activeSessionTitle: c.activeSessionTitle || "",
+          activeProjectName: c.activeProjectName || "",
+        }));
+
+      const matched = (snap.sessions || [])
+        .filter((s) => {
+          if (sessionKey && s.key !== sessionKey) return false;
+          if (sessionId && s.sessionId !== sessionId && s.rawSessionId !== sessionId && s.key !== sessionId) return false;
+          if (agentFilter && s.clientId !== agentFilter) return false;
+          if (projectFilter) {
+            const hay = `${s.projectName || ""} ${s.cwd || ""} ${s.title || ""}`.toLowerCase();
+            if (!hay.includes(projectFilter)) return false;
+          }
+          return true;
+        })
+        .map(mapRegistrySessionForTool);
+
+      return {
+        status: "ok",
+        timestamp: new Date(now()).toISOString(),
+        accessibility: snap.accessibility
+          ? {
+            trusted: Boolean(snap.accessibility.trusted),
+            appDisplayName: snap.accessibility.appDisplayName || "",
+          }
+          : null,
+        clients,
+        totalLiveSessions: (snap.sessions || []).filter((s) => s.status !== "resumable").length,
+        pendingApprovalsTotal: Array.isArray(pending) ? pending.length : 0,
+        sessions: matched,
+      };
+    }
 
     const live = getLiveSessions();
     const matched = live.filter((s) => {
@@ -437,6 +562,15 @@ function createAgentTools({
   }
 
   async function prepareSendConfirmation(args = {}) {
+    if (agentRegistry && typeof agentRegistry.prepareDelegation === "function") {
+      return agentRegistry.prepareDelegation({
+        client: args.client,
+        sessionId: args.session_id,
+        sessionKey: args.session_key,
+        project: args.project,
+        message: args.message,
+      });
+    }
     const resolved = resolveMessageTarget(args);
     if (resolved.error) {
       // Let execute() return the structured error cleanly.
@@ -461,6 +595,15 @@ function createAgentTools({
   }
 
   async function sendAgentMessage(args = {}, { signal } = {}) {
+    if (agentRegistry && typeof agentRegistry.delegateMessage === "function") {
+      return agentRegistry.delegateMessage({
+        client: args.client,
+        sessionId: args.session_id,
+        sessionKey: args.session_key,
+        project: args.project,
+        message: args.message,
+      });
+    }
     const resolved = resolveMessageTarget(args);
     if (resolved.error) return { status: "error", error: resolved.error };
     if (resolved.needsDisambiguation) return resolved;
@@ -552,32 +695,34 @@ function createAgentTools({
     },
     get_agent_status: {
       name: "get_agent_status",
-      description: "Inspect live execution status, pending approval requests, and delegated task progress (sent vs started vs completed) for Coding Agent sessions.",
+      description: "Inspect online desktop clients (Codex, standalone Antigravity), live execution status, pending approval requests, and delegated task lifecycle (located -> confirmed -> delivered -> started -> awaiting_approval -> completed).",
       parameters: {
         type: "object",
         properties: {
           session_id: { type: "string", description: "Optional specific session ID." },
+          session_key: { type: "string", description: "Optional registry sessionKey (e.g., 'codex:active-draft' or 'antigravity:ui:...')." },
           agent: { type: "string", description: "Optional client filter: 'codex' or 'antigravity'." },
           project: { type: "string", description: "Optional project name filter." },
         },
       },
-      timeoutMs: 6_000,
+      timeoutMs: 10_000,
       execute: getAgentStatus,
     },
     send_agent_message: {
       name: "send_agent_message",
-      description: "Deliver a task prompt to an existing desktop Codex or Antigravity (Gemini App) session after explicit user confirmation. Never starts a hidden fake CLI session and never bypasses Agent approval prompts.",
+      description: "Deliver a task prompt to a verified session (or open blank draft) in Codex Desktop or standalone Antigravity App (com.google.antigravity) after explicit user confirmation. Never launches Google Gemini App, never spawns hidden fake CLI sessions, and never bypasses Agent approval prompts.",
       parameters: {
         type: "object",
         required: ["message"],
         properties: {
           client: { type: "string", enum: ["codex", "antigravity"], description: "Target desktop client ('codex' or 'antigravity')." },
-          session_id: { type: "string", description: "Target live session ID from list_agent_sessions (preferred when known)." },
+          session_key: { type: "string", description: "Exact sessionKey from list_agent_sessions (preferred for blank drafts like 'codex:active-draft' or UI sessions)." },
+          session_id: { type: "string", description: "Target live session ID from list_agent_sessions when known." },
           project: { type: "string", description: "Target project name or directory hint to narrow down sessions." },
           message: { type: "string", description: "Exact instruction text to send to the Agent." },
         },
       },
-      timeoutMs: 18_000,
+      timeoutMs: 22_000,
       prepareConfirmation: prepareSendConfirmation,
       execute: sendAgentMessage,
     },

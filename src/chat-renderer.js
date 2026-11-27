@@ -47,7 +47,8 @@ const STRINGS = {
     stepSendingAgent: "Sending task to Agent…",
     stepConfirmTitle: "Confirm Agent delegation",
     stepConfirmSend: "Send",
-    stepTaskSent: "Task sent (awaiting Agent start)",
+    stepTaskSent: "Delivered to desktop composer (awaiting Agent start)",
+    stepBlankDraftLabel: "Current blank chat",
     stepCancelled: "Cancelled",
     stepFailed: "Failed",
     stepOpenBtn: "Open",
@@ -99,7 +100,8 @@ const STRINGS = {
     stepSendingAgent: "正在向 Agent 发送任务…",
     stepConfirmTitle: "等待确认 · 发送任务",
     stepConfirmSend: "确认发送",
-    stepTaskSent: "任务已发送（等待观察执行）",
+    stepTaskSent: "已投递到目标输入框（等待 Agent 开始执行）",
+    stepBlankDraftLabel: "当前空白对话",
     stepCancelled: "已取消",
     stepFailed: "执行失败",
     stepOpenBtn: "打开",
@@ -151,7 +153,8 @@ const STRINGS = {
     stepSendingAgent: "正在向 Agent 傳送任務…",
     stepConfirmTitle: "等待確認 · 傳送任務",
     stepConfirmSend: "確認傳送",
-    stepTaskSent: "任務已傳送（等待觀察執行）",
+    stepTaskSent: "已投遞至目標輸入框（等待 Agent 開始執行）",
+    stepBlankDraftLabel: "目前空白對話",
     stepCancelled: "已取消",
     stepFailed: "執行失敗",
     stepOpenBtn: "開啟",
@@ -297,7 +300,7 @@ function stepHeadline(step) {
   }
   if (step.tool === "send_agent_message") {
     if (step.status === "running") return t("stepSendingAgent");
-    if (step.deliveryStatus === "sent") return t("stepTaskSent");
+    if (step.deliveryStatus === "delivered" || step.deliveryStatus === "sent") return t("stepTaskSent");
     if (step.ambiguousCount) return t("stepFoundSessions").replace("{n}", String(step.ambiguousCount));
     return step.error ? t("stepFailed") : t("stepTaskSent");
   }
@@ -364,7 +367,8 @@ function renderStepsBlock(steps) {
       const c = step.confirmation;
       const meta = document.createElement("div");
       meta.className = "confirm-meta";
-      meta.textContent = [c.clientLabel || c.client, c.project, c.sessionTitle].filter(Boolean).join(" · ");
+      const sessionLabel = c.isBlankDraft ? t("stepBlankDraftLabel") : c.sessionTitle;
+      meta.textContent = [c.clientLabel || c.client, c.project, sessionLabel].filter(Boolean).join(" · ");
       const preview = document.createElement("div");
       preview.className = "confirm-msg";
       preview.textContent = c.message || "";

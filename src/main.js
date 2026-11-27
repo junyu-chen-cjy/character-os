@@ -3022,9 +3022,30 @@ app.on("before-quit", () => _dashboard.quick.dispose());
 app.on("will-quit", () => _dashboard.quick.dispose());
 
 const initPetHalo = require("./pet-halo");
+const { createPlatformAdapter } = require("./agent-integration/platform-adapter");
+const { createCodexAdapter } = require("./agent-integration/codex-adapter");
+const { createAntigravityAdapter } = require("./agent-integration/antigravity-adapter");
+const { createAgentRegistry } = require("./agent-integration/agent-registry");
+
+const platformAdapter = createPlatformAdapter({ systemPreferences, shell });
+const codexAdapter = createCodexAdapter({
+  platformAdapter,
+  focusHookSessionFn: (sessionId, options) => focusDashboardSession(sessionId, options),
+});
+const antigravityAdapter = createAntigravityAdapter({
+  platformAdapter,
+  focusHookSessionFn: (sessionId, options) => focusDashboardSession(sessionId, options),
+});
+const agentRegistry = createAgentRegistry({
+  platformAdapter,
+  adapters: [codexAdapter, antigravityAdapter],
+  getHookSnapshot: () => (_state ? _state.buildSessionSnapshot() : { sessions: [] }),
+  getPendingPermissions: () => pendingPermissions,
+});
 
 const _petHalo = initPetHalo({
   ipcMain,
+  agentRegistry,
   get win() { return win; },
   get petHidden() { return petWindowRuntime.isPetEffectivelyHidden(); },
   get menuOpen() { return menuOpen; },
@@ -4664,6 +4685,7 @@ const personalAgentTools = {
     showItemInFolderFn: (targetPath) => shell.showItemInFolder(targetPath),
   }),
   ...createAgentTools({
+    agentRegistry,
     getSessionSnapshot: () => _state.buildSessionSnapshot(),
     getPendingPermissions: () => pendingPermissions,
     listResumableSessions: () => (
@@ -5203,11 +5225,17 @@ function buildWorkspaceContextPayload() {
       { id: "antigravity", label: "Antigravity", kind: "ide" },
     ];
 
+  const regSnap = agentRegistry.getSnapshot();
+  if (!regSnap.updatedAt || Date.now() - regSnap.updatedAt > 6000) {
+    void agentRegistry.refresh().catch(() => {});
+  }
+
   return {
     status: "ok",
     pendingApprovals,
     agents: productAgentList,
     clients,
+    agentRegistry: regSnap,
     system: {
       platform: process.platform,
       arch: process.arch,
@@ -5320,7 +5348,32 @@ async function runWorkspaceActionFromDashboard(payload) {
     return initPetHalo.launchAgentClientApp(String(payload.clientId || ""), {
       t: translate,
       showDashboard,
+      agentRegistry,
     });
+  }
+  if (type === "focus-registry-session") {
+    return agentRegistry.focusTarget({
+      clientId: typeof payload.clientId === "string" ? payload.clientId : "",
+      sessionKey: typeof payload.sessionKey === "string" ? payload.sessionKey : "",
+      sessionId: typeof payload.sessionId === "string" ? payload.sessionId : "",
+    });
+  }
+  if (type === "refresh-agent-registry") {
+    const snap = await agentRegistry.refresh({ force: true });
+    return { status: "ok", snapshot: snap };
+  }
+  if (type === "open-accessibility-settings") {
+    return agentRegistry.openAccessibilitySettings();
+  }
+  if (type === "reveal-accessibility-app") {
+    return agentRegistry.revealAuthorizedAppInFinder();
+  }
+  if (type === "recheck-accessibility") {
+    const accessibility = agentRegistry.getAccessibilityStatus({ prompt: payload.prompt === true });
+    if (accessibility && accessibility.trusted) {
+      void agentRegistry.refresh({ force: true }).catch(() => {});
+    }
+    return { status: "ok", accessibility };
   }
   if (type === "toggle-dnd") {
     const next = !doNotDisturb;
@@ -5352,6 +5405,13 @@ async function runWorkspaceActionFromDashboard(payload) {
         }
       }
     } catch {}
+    const regSnap = agentRegistry.getSnapshot();
+    for (const p of regSnap?.projects || []) {
+      if (p && typeof p.cwd === "string" && p.cwd) knownCwds.add(p.cwd);
+    }
+    for (const s of regSnap?.sessions || []) {
+      if (s && typeof s.cwd === "string" && s.cwd) knownCwds.add(s.cwd);
+    }
     if (!knownCwds.has(targetCwd)) return { status: "rejected" };
     const err = await shell.openPath(targetCwd);
     return err ? { status: "error", message: err } : { status: "ok" };
@@ -6215,6 +6275,7 @@ if (!gotTheLock) {
     });
     createWindow();
     quotaRefreshManager?.start();
+    void agentRegistry.refresh({ force: true }).catch(() => {});
     // nativeTheme reads are only used to pick an appearance, so subscribing
     // after the pet window exists keeps startup free of extra reloads. The
     // first did-finish-load repeats the resolution once because the value
