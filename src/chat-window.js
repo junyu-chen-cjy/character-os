@@ -474,7 +474,10 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
   function open() {
     openedAt = Date.now();
     if (win && !win.isDestroyed()) {
-      if (typeof win.isVisible === "function" && !win.isVisible()) placeNearTop();
+      if (process.platform === "darwin" && typeof win.setVisibleOnAllWorkspaces === "function") {
+        win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
+      }
+      placeNearTop();
       if (typeof win.setTitle === "function") win.setTitle(resolveWindowTitle());
       if (typeof win.setAlwaysOnTop === "function") win.setAlwaysOnTop(true, "floating");
       if (typeof win.isMinimized === "function" && win.isMinimized()) win.restore();
@@ -497,7 +500,7 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
       skipTaskbar: true,
       alwaysOnTop: true,
       ...(process.platform === "darwin"
-        ? { acceptFirstMouse: true, hiddenInMissionControl: true, vibrancy: "popover", visualEffectState: "active", backgroundColor: "#00000000", hasShadow: true }
+        ? { type: "panel", acceptFirstMouse: true, hiddenInMissionControl: true, vibrancy: "popover", visualEffectState: "active", backgroundColor: "#00000000", hasShadow: true }
         : { backgroundColor: nativeTheme.shouldUseDarkColors ? "#1d1e22" : "#fcfcfa" }),
       webPreferences: {
         preload: path.join(__dirname, "preload-chat.js"),
@@ -506,6 +509,9 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
       },
     });
     win = window;
+    if (process.platform === "darwin" && typeof window.setVisibleOnAllWorkspaces === "function") {
+      window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
+    }
     if (typeof window.setAlwaysOnTop === "function") window.setAlwaysOnTop(true, "floating");
     placeNearTop();
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));

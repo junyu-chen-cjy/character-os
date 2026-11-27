@@ -11,6 +11,10 @@ const {
 } = require("./text-scale");
 const { createDashboardHost } = require("./dashboard-host");
 const { createDashboardQuickMode } = require("./dashboard-quick-mode");
+const {
+  applyActiveSpaceWindowBehavior,
+  summonMacWindowToActiveSpace,
+} = require("./mac-window");
 
 const DEFAULT_WIDTH = 480;
 const DEFAULT_HEIGHT = 600;
@@ -456,6 +460,7 @@ module.exports = function initDashboard(ctx) {
       resizable: true,
       minimizable: true,
       maximizable: true,
+      ...(platform === "darwin" ? { fullscreenable: false } : {}),
       skipTaskbar: false,
       alwaysOnTop: false,
       // macOS: the pet app mostly lives in the background, so the first click
@@ -478,6 +483,7 @@ module.exports = function initDashboard(ctx) {
       windowOptions: opts,
     });
     dashboardWindow = dashboardHost.window;
+    if (platform === "darwin") applyActiveSpaceWindowBehavior(dashboardWindow);
     // BrowserWindow's constructor can quantize framed window geometry at
     // fractional Windows DPI. Re-apply the requested outer bounds before
     // listeners are attached, and treat the post-correction rectangle as the
@@ -597,7 +603,17 @@ module.exports = function initDashboard(ctx) {
       if (!dashboardWindow || dashboardWindow.isDestroyed()) return;
       if (!autoShow) return;
       applySettingsPlacement(options);
-      dashboardWindow.show();
+      if (platform === "darwin") {
+        runProgrammaticBoundsMutation(() => {
+          summonMacWindowToActiveSpace(dashboardWindow, {
+            getActiveWorkArea: options.source === "settings" ? null : ctx.getActiveWorkArea,
+            skipHideDetach: true,
+          });
+          rebaseProgrammaticBounds(dashboardWindow);
+        });
+      } else {
+        dashboardWindow.show();
+      }
       scheduleSettingsPlacementSync(options);
       focusPage();
     });
@@ -724,8 +740,18 @@ module.exports = function initDashboard(ctx) {
         persistWindowBoundsNow(dashboardWindow);
       }
       applySettingsPlacement(options);
-      dashboardWindow.show();
+      if (platform === "darwin") {
+        runProgrammaticBoundsMutation(() => {
+          summonMacWindowToActiveSpace(dashboardWindow, {
+            getActiveWorkArea: options.source === "settings" ? null : ctx.getActiveWorkArea,
+          });
+          rebaseProgrammaticBounds(dashboardWindow);
+        });
+      } else {
+        dashboardWindow.show();
+      }
       scheduleSettingsPlacementSync(options);
+      if (typeof dashboardWindow.moveTop === "function") dashboardWindow.moveTop();
       focusPage();
       sendI18n();
       sendSnapshot();

@@ -9,6 +9,10 @@ const {
   getSettingsWindowTaskbarDetails,
 } = require("./settings-window-icon");
 const { clampTextScale, scaleWidth, scaleHeight, applyZoomToWindow } = require("./text-scale");
+const {
+  applyActiveSpaceWindowBehavior,
+  summonMacWindowToActiveSpace,
+} = require("./mac-window");
 
 const DEFAULT_WIDTH = 800;
 const DEFAULT_HEIGHT = 660;
@@ -403,7 +407,14 @@ function createSettingsWindowRuntime(options = {}) {
     ) {
       win.restore();
     }
-    if (typeof win.show === "function") win.show();
+    if (isMac) {
+      summonMacWindowToActiveSpace(win, {
+        getActiveWorkArea: options.getActiveWorkArea,
+        skipHideDetach: showOptions.isInitialShow === true,
+      });
+    } else if (typeof win.show === "function") {
+      win.show();
+    }
     const lifted = temporarilyLiftSettingsWindow(win);
     if (!lifted && typeof win.moveTop === "function") win.moveTop();
     if (typeof win.focus === "function") win.focus();
@@ -444,6 +455,7 @@ function createSettingsWindowRuntime(options = {}) {
       resizable: true,
       minimizable: true,
       maximizable: true,
+      ...(isMac ? { fullscreenable: false } : {}),
       skipTaskbar: false,
       alwaysOnTop: false,
       // macOS: the pet app mostly lives in the background, so the first click
@@ -470,6 +482,7 @@ function createSettingsWindowRuntime(options = {}) {
 
     if (typeof options.onBeforeCreate === "function") options.onBeforeCreate();
     settingsWindow = new BrowserWindow(opts);
+    if (isMac) applyActiveSpaceWindowBehavior(settingsWindow);
     settingsRendererLoaded = false;
     const createdWindow = settingsWindow;
     // BrowserWindow's constructor can quantize framed window geometry at
@@ -561,7 +574,7 @@ function createSettingsWindowRuntime(options = {}) {
         showPendingSettingsWindow = null;
       }
       clearReadyToShowFallbackTimer();
-      showAndFocusSettingsWindow(createdWindow, showOptions);
+      showAndFocusSettingsWindow(createdWindow, { isInitialShow: true, ...showOptions });
     }
     showPendingSettingsWindow = showCreatedWindow;
     createdWindow.once("ready-to-show", showCreatedWindow);

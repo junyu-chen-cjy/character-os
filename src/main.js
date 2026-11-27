@@ -951,8 +951,13 @@ const settingsWindowRuntime = createSettingsWindowRuntime({
   path,
   discordDefaultAppIdPresent: !!discordPresenceSettings.DEFAULT_CLAWD_DISCORD_APP_ID,
   isAppQuitting: () => isQuitting,
-  hideOnMinimize: isMac,
   hideOnClose: isMac,
+  getActiveWorkArea: () => {
+    try {
+      const pt = screen.getCursorScreenPoint();
+      return screen.getDisplayNearestPoint(pt)?.workArea || null;
+    } catch { return null; }
+  },
   onBeforeShow: () => { if (typeof chatWindow !== "undefined" && chatWindow) chatWindow.hide(); },
   getPetWindowBounds: () => getPetWindowBounds(),
   getNearestWorkArea: (cx, cy) => getNearestWorkArea(cx, cy),
@@ -2967,8 +2972,13 @@ const _dashboard = require("./dashboard")({
   getI18n: () => getDashboardI18nPayload(),
   focusSession: (sessionId, options) => focusDashboardSession(sessionId, options),
   isAppQuitting: () => isQuitting,
-  hideOnMinimize: isMac,
   hideOnClose: isMac,
+  getActiveWorkArea: () => {
+    try {
+      const pt = screen.getCursorScreenPoint();
+      return screen.getDisplayNearestPoint(pt)?.workArea || null;
+    } catch { return null; }
+  },
   onBeforeShow: () => { if (typeof chatWindow !== "undefined" && chatWindow) chatWindow.hide(); },
   getPetWindowBounds,
   getNearestWorkArea,

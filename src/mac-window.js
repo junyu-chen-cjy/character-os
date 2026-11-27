@@ -310,9 +310,113 @@ function deDelegateWindowFromStationarySpace(browserWindow, level = 0) {
   }
 }
 
+// Configures an ordinary macOS app window (Workspace, Settings) so summoning it
+// opens in the user's CURRENT Space — including native fullscreen app Spaces —
+// without switching back to a previous Space, without dragging across Spaces on
+// swipe, and without making the window permanently always-on-top.
+function applyActiveSpaceWindowBehavior(browserWindow) {
+  if (!isMac || !browserWindow || (typeof browserWindow.isDestroyed === "function" && browserWindow.isDestroyed())) {
+    return false;
+  }
+  try {
+    const { msgPtr, msgULong, msgVoidULong } = initObjc();
+    if (typeof browserWindow.getNativeWindowHandle !== "function") return false;
+    const nsView = nativeHandleToPointer(browserWindow.getNativeWindowHandle());
+    if (!nsView) return false;
+    const nsWindow = msgPtr(nsView, selWindow);
+    if (!nsWindow) return false;
+
+    const current = Number(msgULong(nsWindow, selCollectionBehavior)) || 0;
+    const clearMask =
+      NSWindowCollectionBehaviorCanJoinAllSpaces |
+      NSWindowCollectionBehaviorFullScreenPrimary |
+      NSWindowCollectionBehaviorFullScreenNone;
+    const setMask =
+      NSWindowCollectionBehaviorMoveToActiveSpace |
+      NSWindowCollectionBehaviorFullScreenAuxiliary;
+    const next = (current & ~clearMask) | setMask;
+    if (next !== current) {
+      msgVoidULong(nsWindow, selSetCollectionBehavior, next);
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function moveWindowToWorkAreaIfNeeded(win, workArea) {
+  if (!win || !workArea || typeof win.getBounds !== "function" || typeof win.setBounds !== "function") {
+    return false;
+  }
+  if (!Number.isFinite(workArea.width) || !Number.isFinite(workArea.height) || workArea.width <= 0 || workArea.height <= 0) {
+    return false;
+  }
+  let bounds;
+  try { bounds = win.getBounds(); } catch { return false; }
+  if (!bounds || !Number.isFinite(bounds.width) || !Number.isFinite(bounds.height)) return false;
+  const cx = bounds.x + bounds.width / 2;
+  const cy = bounds.y + bounds.height / 2;
+  const alreadyOnDisplay = cx >= workArea.x
+    && cx <= workArea.x + workArea.width
+    && cy >= workArea.y
+    && cy <= workArea.y + workArea.height;
+  if (alreadyOnDisplay) return false;
+
+  const width = Math.min(bounds.width, workArea.width);
+  const height = Math.min(bounds.height, workArea.height);
+  const x = Math.round(workArea.x + (workArea.width - width) / 2);
+  const y = Math.round(workArea.y + (workArea.height - height) / 2);
+  try {
+    win.setBounds({ x, y, width: Math.round(width), height: Math.round(height) });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function summonMacWindowToActiveSpace(win, { getActiveWorkArea, skipHideDetach = false } = {}) {
+  if (!isMac || !win || (typeof win.isDestroyed === "function" && win.isDestroyed())) return false;
+  try {
+    if (typeof win.setAlwaysOnTop === "function" && typeof win.isAlwaysOnTop === "function" && win.isAlwaysOnTop()) {
+      win.setAlwaysOnTop(false);
+    }
+    if (typeof win.isMinimized === "function" && win.isMinimized() && typeof win.restore === "function") {
+      win.restore();
+    }
+    // Detach from any previous Space before ordering front so macOS WindowServer
+    // moves the window into the current Space instead of switching back to the old Space.
+    if (!skipHideDetach && typeof win.isVisible === "function" && win.isVisible() && typeof win.hide === "function") {
+      win.hide();
+    }
+    if (typeof getActiveWorkArea === "function") {
+      const activeArea = getActiveWorkArea();
+      if (activeArea) moveWindowToWorkAreaIfNeeded(win, activeArea);
+    }
+    const appliedNative = applyActiveSpaceWindowBehavior(win);
+    if (!appliedNative && typeof win.setVisibleOnAllWorkspaces === "function") {
+      win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
+      if (typeof win.show === "function") win.show();
+      const timer = setTimeout(() => {
+        if (!win.isDestroyed()) {
+          try { win.setVisibleOnAllWorkspaces(false, { skipTransformProcessType: true }); } catch {}
+        }
+      }, 150);
+      if (timer && typeof timer.unref === "function") timer.unref();
+      return true;
+    }
+    if (typeof win.show === "function") win.show();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 module.exports = {
   applyStationaryCollectionBehavior,
   deDelegateWindowFromStationarySpace,
+  applyActiveSpaceWindowBehavior,
+  moveWindowToWorkAreaIfNeeded,
+  summonMacWindowToActiveSpace,
   __test: {
     runDeDelegateTransaction,
     resolveSkyLightDeDelegateApi,
