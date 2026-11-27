@@ -146,15 +146,46 @@ function createAxRuntime() {
     }
   }
 
-  function activateRunningApp(running) {
-    if (!running || !running.inst) return false;
-    // NSApplicationActivateIgnoringOtherApps = 1 << 1
-    try {
-      if (running.isHidden) msg(running.inst, selector("unhide"));
-      return Boolean(msgActivate(running.inst, selector("activateWithOptions:"), 2));
-    } catch {
-      return false;
+  function activateRunningApp(running, bundleId, axApp) {
+    // 1. LaunchServices `open -b` reliably switches macOS Spaces and activates
+    //    background apps on macOS 14+ where NSRunningApplication.activateWithOptions
+    //    is ignored for non-frontmost callers.
+    if (bundleId) {
+      try {
+        execFileSync("/usr/bin/open", ["-b", bundleId], { timeout: 4000 });
+      } catch {}
     }
+    if (running && running.inst) {
+      try {
+        if (running.isHidden) msg(running.inst, selector("unhide"));
+        msgActivate(running.inst, selector("activateWithOptions:"), 3);
+      } catch {}
+    }
+    if (axApp) {
+      try { setAttr(axApp, cfStr("AXFrontmost"), cfTrue); } catch {}
+    }
+  }
+
+  function isAppFrontmost(axApp) {
+    if (!axApp) return false;
+    return getBool(axApp, "AXFrontmost") === true;
+  }
+
+  function readElementTextDeep(el) {
+    if (!el) return "";
+    const parts = [];
+    const direct = getText(el, "AXValue");
+    if (direct) parts.push(direct);
+    walkTree(el, (node) => {
+      if (node === el) return null;
+      const role = getText(node, "AXRole");
+      if (role === "AXStaticText" || role === "AXTextArea" || role === "AXTextField") {
+        const v = getText(node, "AXValue") || getText(node, "AXTitle");
+        if (v) parts.push(v);
+      }
+      return null;
+    }, { maxDepth: 8, maxNodes: 120, timeoutMs: 400 });
+    return normalizeLabel(parts.join(" "));
   }
 
   // Collects candidate windows including AXMainWindow / AXFocusedWindow so apps
@@ -281,6 +312,8 @@ function createAxRuntime() {
     getFrame,
     findRunningApp,
     activateRunningApp,
+    isAppFrontmost,
+    readElementTextDeep,
     getAppWindows,
     walkTree,
     enableManualAccessibility,
@@ -378,6 +411,7 @@ function inspectSnapshot(ax, { bundleId, clientType }) {
       const seenSessions = new Set();
       const staticTexts = [];
       let blankSignals = 0;
+      let isGenerating = false;
 
       ax.walkTree(primary.el, (el, depth) => {
         const role = ax.getText(el, "AXRole");
@@ -388,6 +422,9 @@ function inspectSnapshot(ax, { bundleId, clientType }) {
 
         if (role === "AXWebArea" && title && !result.webAreaTitle) {
           result.webAreaTitle = title;
+        }
+        if (role === "AXButton" && /^(Stop|Stop generating|Cancel|停止|停止生成|中止)$/i.test(label)) {
+          isGenerating = true;
         }
 
         if (clientType === "antigravity") {
@@ -448,6 +485,7 @@ function inspectSnapshot(ax, { bundleId, clientType }) {
         return null;
       });
 
+      result.isGenerating = isGenerating;
       if (clientType === "codex") {
         // Remove project-folder header buttons that were visited before their "Start new chat in <proj>" child.
         result.sidebarSessions = result.sidebarSessions.filter((s) => !seenProjects.has(s.title));
@@ -459,27 +497,32 @@ function inspectSnapshot(ax, { bundleId, clientType }) {
         result.activeProjectName = parsed.project || result.sidebarProjects[0] || "";
         result.isBlankDraft = parsed.isBlank;
       } else if (clientType === "codex") {
-        result.isBlankDraft = blankSignals > 0;
-        if (result.isBlankDraft) {
-          // Try to pick the project mentioned right between "你想让我们在" and "中构建什么？"
-          const idx = staticTexts.findIndex((s) => /^你想让我们在|What would you like to build/i.test(s));
-          if (idx >= 0) {
-            for (const proj of result.sidebarProjects) {
-              if (staticTexts.slice(idx, idx + 4).some((s) => s.includes(proj))) {
-                result.activeProjectName = proj;
-                break;
+        // First check whether an existing sidebar conversation is visibly open in the main pane
+        // (its title appears both in the sidebar and the main thread header).
+        let matchedActiveTitle = "";
+        for (const sess of result.sidebarSessions) {
+          const hits = staticTexts.filter((s) => s === sess.title).length;
+          if (hits >= 2) {
+            matchedActiveTitle = sess.title;
+            break;
+          }
+        }
+        if (matchedActiveTitle) {
+          result.isBlankDraft = false;
+          result.activeConversationTitle = matchedActiveTitle;
+        } else {
+          result.isBlankDraft = blankSignals > 0;
+          if (result.isBlankDraft) {
+            const idx = staticTexts.findIndex((s) => /^你想让我们在|What would you like to build/i.test(s));
+            if (idx >= 0) {
+              for (const proj of result.sidebarProjects) {
+                if (staticTexts.slice(idx, idx + 4).some((s) => s.includes(proj))) {
+                  result.activeProjectName = proj;
+                  break;
+                }
               }
             }
-          }
-          result.activeConversationTitle = "";
-        } else {
-          // Non-blank Codex thread: match active heading text against sidebar sessions.
-          for (const sess of result.sidebarSessions) {
-            const hits = staticTexts.filter((s) => s === sess.title).length;
-            if (hits >= 2) {
-              result.activeConversationTitle = sess.title;
-              break;
-            }
+            result.activeConversationTitle = "";
           }
         }
       }
@@ -523,17 +566,22 @@ function focusSessionWindow(ax, { bundleId, clientType, targetTitle, isBlankDraf
   const running = ax.findRunningApp(bundleId);
   if (!running || running.pid <= 0) return { status: "app_not_running" };
 
-  ax.activateRunningApp(running);
-  sleepSync(280);
-
   const axApp = ax.createApp(running.pid);
   if (!axApp) return { status: "unavailable" };
 
   try {
     ax.enableManualAccessibility(axApp);
+    ax.activateRunningApp(running, bundleId, axApp);
+    for (let i = 0; i < 10; i++) {
+      sleepSync(180);
+      if (ax.isAppFrontmost(axApp)) break;
+    }
     const wins = ax.getAppWindows(axApp);
     const primary = wins.find((w) => w.subrole === "AXStandardWindow") || wins[0];
     if (!primary) return { status: "window_not_found" };
+    ax.performAction(primary.el, ax.cfStr("AXRaise"));
+    ax.setAttr(primary.el, ax.cfStr("AXMain"), ax.cfTrue);
+    sleepSync(140);
 
     let switched = false;
     if (targetTitle && !isBlankDraft) {
@@ -550,7 +598,7 @@ function focusSessionWindow(ax, { bundleId, clientType, targetTitle, isBlankDraf
       }
     }
     for (const w of wins) ax.release(w.el);
-    return { status: "ok", switched };
+    return { status: "ok", switched, frontmost: ax.isAppFrontmost(axApp) };
   } finally {
     ax.release(axApp);
   }
@@ -561,12 +609,18 @@ function checkConversationContainsSnippet(ax, winEl, snippet) {
   if (!needle) return false;
   const { found } = ax.walkTree(winEl, (el) => {
     const role = ax.getText(el, "AXRole");
-    if (role !== "AXStaticText" && role !== "AXGroup") return null;
-    const text = normalizeLabel(ax.getText(el, "AXValue") || ax.getText(el, "AXTitle")).toLowerCase();
+    if (role === "AXTextArea" || role === "AXTextField") return null;
+    const text = normalizeLabel(ax.getText(el, "AXValue") || ax.getText(el, "AXTitle") || ax.getText(el, "AXDescription")).toLowerCase();
     if (text && text.includes(needle)) return true;
     return null;
-  }, { maxDepth: 42, maxNodes: 4500, timeoutMs: 1800 });
+  }, { maxDepth: 42, maxNodes: 5200, timeoutMs: 2200 });
   return Boolean(found);
+}
+
+function findSendButton(ax, winEl) {
+  return findButtonByTitle(ax, winEl, (label) =>
+    /^(Send|Send message|Submit|发送|发送消息|提交)$/i.test(label)
+  );
 }
 
 function deliverMessage(ax, { bundleId, clientType, targetTitle, isBlankDraft, message }) {
@@ -578,9 +632,6 @@ function deliverMessage(ax, { bundleId, clientType, targetTitle, isBlankDraft, m
     return { status: "error", deliveryStatus: "app_not_running", error: `Target app (${bundleId}) is not running.` };
   }
 
-  ax.activateRunningApp(running);
-  sleepSync(350);
-
   const axApp = ax.createApp(running.pid);
   if (!axApp) {
     return { status: "error", deliveryStatus: "unavailable", error: "Failed to attach Accessibility handle." };
@@ -590,11 +641,33 @@ function deliverMessage(ax, { bundleId, clientType, targetTitle, isBlankDraft, m
   let clipboardTouched = false;
   try {
     ax.enableManualAccessibility(axApp);
+    const wasFrontmost = ax.isAppFrontmost(axApp);
+    if (!wasFrontmost) {
+      ax.activateRunningApp(running, bundleId, axApp);
+      // Wait for macOS activation + cross-Space animation to complete.
+      sleepSync(650);
+      for (let i = 0; i < 10; i++) {
+        if (ax.isAppFrontmost(axApp)) break;
+        ax.activateRunningApp(running, bundleId, axApp);
+        sleepSync(220);
+      }
+    }
+    if (!ax.isAppFrontmost(axApp)) {
+      return {
+        status: "error",
+        deliveryStatus: "activation_failed",
+        error: `Could not bring target app (${bundleId}) to the foreground. Aborted before touching clipboard or keyboard.`,
+      };
+    }
+
     const wins = ax.getAppWindows(axApp);
     const primary = wins.find((w) => w.subrole === "AXStandardWindow") || wins[0];
     if (!primary) {
       return { status: "error", deliveryStatus: "window_not_found", error: "No open standard window found for target app." };
     }
+    ax.performAction(primary.el, ax.cfStr("AXRaise"));
+    ax.setAttr(primary.el, ax.cfStr("AXMain"), ax.cfTrue);
+    sleepSync(180);
 
     // 1. Verify or switch to the requested conversation before touching the composer.
     const currentSnap = inspectSnapshot(ax, { bundleId, clientType });
@@ -663,48 +736,109 @@ function deliverMessage(ax, { bundleId, clientType, targetTitle, isBlankDraft, m
     }
 
     try {
-      ax.setAttr(composer, ax.cfStr("AXFocused"), ax.cfTrue);
-      sleepSync(80);
+      const frame = ax.getFrame(composer);
       let isFocused = ax.getBool(composer, "AXFocused") === true;
       if (!isFocused) {
-        const frame = ax.getFrame(composer);
-        if (frame) {
-          ax.clickAt(frame.x + Math.min(frame.width / 2, 120), frame.y + frame.height / 2);
-          sleepSync(140);
-          isFocused = ax.getBool(composer, "AXFocused") === true;
-        }
+        ax.setAttr(composer, ax.cfStr("AXFocused"), ax.cfTrue);
+        sleepSync(120);
+        isFocused = ax.getBool(composer, "AXFocused") === true;
+      }
+      if (!isFocused && frame) {
+        ax.clickAt(frame.x + Math.min(frame.width * 0.5, 120), frame.y + Math.min(frame.height * 0.5, 24));
+        sleepSync(150);
+        isFocused = ax.getBool(composer, "AXFocused") === true;
       }
       if (!isFocused) {
         ax.performAction(composer, ax.cfStr("AXPress"));
         sleepSync(120);
         isFocused = ax.getBool(composer, "AXFocused") === true;
       }
-      if (!isFocused) {
+      const frontmostNow = ax.isAppFrontmost(axApp);
+      if (!isFocused || !frontmostNow) {
         return {
           status: "error",
           deliveryStatus: "composer_not_focused",
-          error: "Located the composer input, but macOS did not grant keyboard focus to it. Aborted without pressing Return.",
+          diagnostics: { isFocused, frontmost: frontmostNow, frame },
+          error: `Located the composer input, but could not verify active keyboard focus in the foreground app (isFocused=${isFocused}, frontmost=${frontmostNow}). Aborted without pressing Return.`,
         };
       }
 
-      // 3. Preserve clipboard, paste confirmed message, press Return, and restore clipboard.
+      // 3. Preserve clipboard, paste confirmed message, and VERIFY it actually entered the composer before submitting!
+      const snippet18 = normalizeLabel(message).slice(0, 18).toLowerCase();
+      const preText = ax.readElementTextDeep(composer);
       prevClipboard = ax.readClipboardText();
       ax.writeClipboardText(message);
       clipboardTouched = true;
-      sleepSync(60);
-      ax.sendKey(KEYCODE_V, K_CG_EVENT_FLAG_MASK_COMMAND);
-      sleepSync(180);
-      ax.sendKey(KEYCODE_RETURN, 0);
-      sleepSync(550);
+      sleepSync(80);
 
-      // 4. Verify submission: check whether composer cleared and/or snippet appears in transcript.
-      const postVal = normalizeLabel(ax.getText(composer, "AXValue"));
-      const composerCleared = !postVal || !postVal.includes(normalizeLabel(message).slice(0, 24));
-      const verifiedInConversation = checkConversationContainsSnippet(ax, primary.el, message);
+      let pasteVerified = false;
+      let observedComposerText = "";
+      for (let tryPaste = 0; tryPaste < 2 && !pasteVerified; tryPaste++) {
+        if (tryPaste > 0 && frame) {
+          ax.clickAt(frame.x + Math.min(frame.width * 0.5, 120), frame.y + Math.min(frame.height * 0.5, 24));
+          sleepSync(120);
+        }
+        ax.sendKey(KEYCODE_V, K_CG_EVENT_FLAG_MASK_COMMAND);
+        for (let waitIdx = 0; waitIdx < 4; waitIdx++) {
+          sleepSync(180);
+          observedComposerText = ax.readElementTextDeep(composer);
+          if (observedComposerText && (observedComposerText.toLowerCase().includes(snippet18) || observedComposerText.length >= preText.length + Math.min(8, message.length))) {
+            pasteVerified = true;
+            break;
+          }
+        }
+      }
+
+      if (!pasteVerified) {
+        return {
+          status: "error",
+          deliveryStatus: "paste_not_observed",
+          diagnostics: {
+            frontmost: ax.isAppFrontmost(axApp),
+            isFocused: ax.getBool(composer, "AXFocused") === true,
+            preTextLen: preText.length,
+            observedComposerTextLen: observedComposerText.length,
+            frame,
+          },
+          error: "Focused composer and sent Cmd+V, but the pasted text was not observed in the composer. Aborted without pressing Return.",
+        };
+      }
+
+      // 4. Submit with Return and verify composer cleared and/or transcript contains the message.
+      ax.sendKey(KEYCODE_RETURN, 0);
+      let composerCleared = false;
+      let verifiedInConversation = false;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        sleepSync(450);
+        const postVal = ax.readElementTextDeep(composer);
+        composerCleared = !postVal || !postVal.toLowerCase().includes(snippet18);
+        verifiedInConversation = checkConversationContainsSnippet(ax, primary.el, message);
+        if (composerCleared && verifiedInConversation) break;
+        // If text is still sitting in composer after 2 checks, try clicking an explicit Send button if present.
+        if (attempt === 1 && !composerCleared) {
+          const sendBtn = findSendButton(ax, primary.el);
+          if (sendBtn) {
+            ax.performAction(sendBtn, ax.cfStr("AXPress"));
+            ax.release(sendBtn);
+          }
+        }
+      }
+
+      if (!composerCleared && !verifiedInConversation) {
+        return {
+          status: "error",
+          deliveryStatus: "submit_not_verified",
+          pasteVerified: true,
+          composerCleared: false,
+          verifiedInConversation: false,
+          error: "Pasted text into composer, but neither composer clear nor message appearance in conversation was observed after Return.",
+        };
+      }
 
       return {
         status: "ok",
         deliveryStatus: "delivered",
+        pasteVerified: true,
         verifiedInConversation,
         composerCleared,
         activeTitle: wantTitle || currentSnap.activeConversationTitle || "",

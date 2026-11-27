@@ -187,16 +187,29 @@ function createCodexAdapter({
       if (p.cwd) projectByName.set(projectNameFromPath(p.cwd).toLowerCase(), p);
     }
 
+    const stripCodexPrefix = (id) => String(id || "").replace(/^codex:/i, "");
     const codexHooks = (hookSessions || []).filter((s) => s && !s.headless && s.agentId === "codex");
     const hookById = new Map();
     for (const h of codexHooks) {
-      hookById.set(h.id, h);
-      if (h.rawSessionId) hookById.set(h.rawSessionId, h);
+      if (h.id) {
+        hookById.set(h.id, h);
+        hookById.set(stripCodexPrefix(h.id), h);
+      }
+      if (h.rawSessionId) {
+        hookById.set(h.rawSessionId, h);
+        hookById.set(stripCodexPrefix(h.rawSessionId), h);
+      }
     }
 
-    const approvalsFor = (sessionId, rawId) => (pendingApprovals || []).filter(
-      (p) => p && (p.sessionId === sessionId || (rawId && p.sessionId === rawId))
-    );
+    const approvalsFor = (sessionId, rawId) => {
+      const bareA = stripCodexPrefix(sessionId);
+      const bareB = stripCodexPrefix(rawId);
+      return (pendingApprovals || []).filter((p) => {
+        if (!p) return false;
+        const pBare = stripCodexPrefix(p.sessionId);
+        return p.sessionId === sessionId || (rawId && p.sessionId === rawId) || (bareA && pBare === bareA) || (bareB && pBare === bareB);
+      });
+    };
 
     const sessions = [];
     const matchedHookIds = new Set();
@@ -236,10 +249,15 @@ function createCodexAdapter({
     const sidebarSet = new Set((desktop?.sidebarSessions || []).map((s) => s.title.toLowerCase()));
 
     for (const thread of threads) {
-      const hook = hookById.get(thread.id) || null;
+      const bareThreadId = stripCodexPrefix(thread.id);
+      const hook = hookById.get(bareThreadId) || hookById.get(thread.id) || null;
       if (hook) {
         matchedHookIds.add(hook.id);
-        if (hook.rawSessionId) matchedHookIds.add(hook.rawSessionId);
+        matchedHookIds.add(stripCodexPrefix(hook.id));
+        if (hook.rawSessionId) {
+          matchedHookIds.add(hook.rawSessionId);
+          matchedHookIds.add(stripCodexPrefix(hook.rawSessionId));
+        }
       }
       const approvals = hook ? approvalsFor(hook.id, hook.rawSessionId) : [];
       const isVisible = Boolean(
@@ -255,7 +273,7 @@ function createCodexAdapter({
 
       let status = "resumable";
       if (approvals.length > 0) status = "awaiting_approval";
-      else if (hook?.badge === "running") status = "running";
+      else if (hook?.badge === "running" || thread.loadedStatus === "active" || (isVisible && desktop?.isGenerating)) status = "running";
       else if (hook?.badge === "done") status = "done";
       else if (hook?.badge === "interrupted") status = "interrupted";
       else if (isVisible || inSidebar || hook) status = "idle";
@@ -287,13 +305,14 @@ function createCodexAdapter({
 
     // 3. Include any live hook/JSONL sessions not present in thread/list (e.g., fresh CLI sessions)
     for (const hook of codexHooks) {
-      if (matchedHookIds.has(hook.id) || (hook.rawSessionId && matchedHookIds.has(hook.rawSessionId))) continue;
+      const bareHookId = stripCodexPrefix(hook.rawSessionId || hook.id);
+      if (matchedHookIds.has(hook.id) || matchedHookIds.has(bareHookId) || (hook.rawSessionId && matchedHookIds.has(hook.rawSessionId))) continue;
       const approvals = approvalsFor(hook.id, hook.rawSessionId);
       const status = approvals.length > 0 ? "awaiting_approval" : (hook.badge || "idle");
       sessions.push({
-        key: `codex:${hook.id}`,
-        sessionId: hook.id,
-        rawSessionId: hook.rawSessionId || hook.id,
+        key: `codex:${bareHookId}`,
+        sessionId: bareHookId,
+        rawSessionId: bareHookId,
         clientId: CODEX_CLIENT_ID,
         clientName: "Codex",
         agentId: "codex",

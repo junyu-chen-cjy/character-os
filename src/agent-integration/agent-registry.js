@@ -47,12 +47,15 @@ function createAgentRegistry({
     if (liveSession && (rec.stage === "delivered" || rec.stage === "started" || rec.stage === "awaiting_approval")) {
       if (liveSession.status === "awaiting_approval") {
         rec.stage = "awaiting_approval";
-      } else if (liveSession.status === "running" && (!liveSession.updatedAt || liveSession.updatedAt >= rec.deliveredAt - 2000)) {
+      } else if (liveSession.status === "running" && (!liveSession.updatedAt || liveSession.updatedAt >= rec.deliveredAt - 3000)) {
         rec.stage = "started";
         rec.startedAt = rec.startedAt || now();
       } else if (liveSession.status === "done" && liveSession.updatedAt && liveSession.updatedAt > rec.deliveredAt) {
         rec.stage = "completed";
         rec.completedAt = rec.completedAt || liveSession.updatedAt;
+      } else if (rec.stage === "started" && (liveSession.status === "idle" || liveSession.status === "done")) {
+        rec.stage = "completed";
+        rec.completedAt = rec.completedAt || now();
       }
     }
     return {
@@ -64,6 +67,33 @@ function createAgentRegistry({
       messagePreview: rec.messagePreview || "",
       error: rec.error || "",
     };
+  }
+
+  // When a blank draft receives a message (e.g., codex:active-draft), the client
+  // promotes it into a brand-new real session. Re-bind the active blank-draft
+  // delegation record to that newly created/active session so lifecycle tracking
+  // continues uninterrupted through started -> completed.
+  function rebindBlankDraftDelegations(sessions) {
+    for (const [key, rec] of Array.from(delegations.entries())) {
+      if (!rec.wasBlankDraft || (rec.stage !== "delivered" && rec.stage !== "started" && rec.stage !== "awaiting_approval")) {
+        continue;
+      }
+      const draftStillPresent = sessions.some((s) => s.key === key);
+      // Prefer a brand-new session on the same client that received activity right after delivery!
+      const candidate = sessions.find((s) =>
+        s.clientId === rec.clientId
+        && !s.isBlankDraft
+        && (s.status === "running"
+          || s.status === "done"
+          || s.status === "awaiting_approval"
+          || (s.updatedAt && s.updatedAt >= rec.deliveredAt - 4000)
+          || (!draftStillPresent && s.isCurrentVisible))
+      );
+      if (candidate && !delegations.has(candidate.key)) {
+        delegations.set(candidate.key, { ...rec, wasBlankDraft: false, promotedFromKey: key });
+        delegations.delete(key);
+      }
+    }
   }
 
   function mergeProjects(clients, sessions) {
@@ -160,7 +190,9 @@ function createAgentRegistry({
       );
 
       const clients = results.map((r) => r.client);
-      const sessions = results.flatMap((r) => r.sessions).map((s) => ({
+      const rawSessions = results.flatMap((r) => r.sessions);
+      rebindBlankDraftDelegations(rawSessions);
+      const sessions = rawSessions.map((s) => ({
         ...s,
         lastDelegation: observeDelegation(s.key, s),
       }));
@@ -403,6 +435,8 @@ function createAgentRegistry({
     if (outcome && outcome.status === "ok" && outcome.deliveryStatus === "delivered") {
       delegations.set(resolved.session.key, {
         stage: "delivered",
+        clientId: resolved.client.id,
+        wasBlankDraft: Boolean(resolved.session.isBlankDraft),
         deliveredAt: ts,
         startedAt: 0,
         completedAt: 0,

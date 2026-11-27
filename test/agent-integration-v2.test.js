@@ -347,6 +347,91 @@ describe("Agent Integration v2: Platform, Adapters & Unified Registry", () => {
     assert.match(res.error, /offline/i);
   });
 
+  it("normalizes codex: hook IDs without double prefix and promotes blank-draft delegations through started -> completed", async () => {
+    let clock = Date.parse("2026-11-28T03:43:00Z");
+    let isBlank = true;
+    let threads = [];
+    let hookSessions = [];
+
+    const platformAdapter = makeStubPlatformAdapter({
+      trusted: true,
+      installedPaths: { "/Applications/ChatGPT.app": true },
+      desktopByBundle: {},
+    });
+    platformAdapter.inspectDesktopApp = async () => ({
+      status: "ok",
+      running: true,
+      pid: 86011,
+      isBlankDraft: isBlank,
+      hasComposer: true,
+      activeConversationTitle: isBlank ? "" : "确认连通性测试",
+      sidebarProjects: ["character-os"],
+      sidebarSessions: isBlank ? [] : [{ title: "确认连通性测试", label: "确认连通性测试" }],
+    });
+
+    const codex = createCodexAdapter({
+      platformAdapter,
+      queryThreadsFn: async () => ({ status: "ok", threads }),
+      readLocalProjectsFn: () => [],
+      now: () => clock,
+    });
+    const registry = createAgentRegistry({
+      platformAdapter,
+      adapters: [codex],
+      getHookSnapshot: () => ({ sessions: hookSessions }),
+      now: () => clock,
+    });
+
+    await registry.refresh({ force: true });
+    const delivered = await registry.delegateMessage({
+      client: "codex",
+      sessionKey: "codex:active-draft",
+      message: "[Character OS 连通性测试] 请仅回复收到，不执行任何任务。",
+    });
+    assert.equal(delivered.status, "ok");
+    assert.equal(delivered.stage, "delivered");
+
+    // Codex turns blank draft into a real thread and emits prefixed hook id "codex:<uuid>"
+    clock += 1500;
+    isBlank = false;
+    threads = [{
+      id: "01a21e88-a9d3-7043-9c8e-3fe140bda814",
+      title: "确认连通性测试",
+      cwd: "",
+      projectName: "",
+      originator: "Codex Desktop",
+      kind: "desktop",
+      updatedAt: clock,
+      loadedStatus: "active",
+    }];
+    hookSessions = [{
+      id: "codex:01a21e88-a9d3-7043-9c8e-3fe140bda814",
+      rawSessionId: "codex:01a21e88-a9d3-7043-9c8e-3fe140bda814",
+      agentId: "codex",
+      badge: "running",
+      lastEvent: "UserPromptSubmit",
+      lastEventAt: clock,
+      headless: false,
+    }];
+
+    const runningSnap = await registry.refresh({ force: true });
+    const promoted = runningSnap.sessions.find((s) => s.key === "codex:01a21e88-a9d3-7043-9c8e-3fe140bda814");
+    assert.ok(promoted, "must merge hook + thread under single non-duplicated key");
+    assert.equal(runningSnap.sessions.some((s) => s.key.startsWith("codex:codex:")), false);
+    assert.equal(promoted.lastDelegation.stage, "started");
+
+    // Codex finishes replying "收到"
+    clock += 4000;
+    threads[0].loadedStatus = "idle";
+    hookSessions[0].badge = "done";
+    hookSessions[0].lastEvent = "Stop";
+    hookSessions[0].lastEventAt = clock;
+
+    const doneSnap = await registry.refresh({ force: true });
+    const finished = doneSnap.sessions.find((s) => s.key === "codex:01a21e88-a9d3-7043-9c8e-3fe140bda814");
+    assert.equal(finished.lastDelegation.stage, "completed");
+  });
+
   it("exports createPlatformAdapter cleanly on non-darwin platforms without throwing", () => {
     const p = createPlatformAdapter({ platform: "linux" });
     const ax = p.getAccessibilityStatus();

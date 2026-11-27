@@ -140,7 +140,7 @@ function createAntigravityAdapter({
 
       let status = "idle";
       if (approvals.length > 0) status = "awaiting_approval";
-      else if (hook?.badge === "running") status = "running";
+      else if (hook?.badge === "running" || (conv.isCurrentVisible && desktop?.isGenerating)) status = "running";
       else if (hook?.badge === "done") status = "done";
       else if (hook?.badge === "interrupted") status = "interrupted";
 
