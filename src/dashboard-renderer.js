@@ -762,7 +762,7 @@ function contextUsageText(session) {
 // a source only. Provider sections cover Antigravity's own /usage (Gemini +
 // Claude/GPT-via-agy), Claude Code's rate_limits, Codex's generic rollout
 // rate_limits, and Dashboard-only Codex Spark quota.
-// Severity thresholds mirror the Orbit coins (quota-ring-renderer.js): a bar
+// Severity thresholds: a bar
 // and a ring must agree on what counts as warn (60) and hot (85), otherwise
 // the same bucket reads as alarming in one surface and fine in the other.
 // test/quota-palette.test.js pins the mirror.
@@ -1026,7 +1026,6 @@ function buildQuotaSourceHeader(sourceEntry, providerEntry, baseLabel, providerK
   return parts.length ? parts.join(" · ") : null;
 }
 
-// Mirrored in quota-ring-renderer.js; keep money formatting in sync.
 function formatBalanceAmount(amount, currency) {
   const symbol = currency === "USD" ? "$" : "¥";
   return symbol + (amount >= 100 ? Math.round(amount).toString() : amount.toFixed(2));
@@ -1041,8 +1040,8 @@ function buildQuotaHalfBar(labelText, bucket, resetStyle, providerKey, ringSlot,
   labelRow.appendChild(createText("span", "quota-label", labelText));
   const isBalance = presentation.kind === "balance";
   const remainingPercent = Math.max(0, Math.min(100, Math.round(100 - (Number(bucket.usedPercent) || 0))));
-  const remainingWord = t("quotaRingRemainingWord") !== "quotaRingRemainingWord"
-    ? t("quotaRingRemainingWord")
+  const remainingWord = t("quotaRemainingWord") !== "quotaRemainingWord"
+    ? t("quotaRemainingWord")
     : "left";
   const percentText = isBalance
     ? t("dashboardDeepseekBalanceBaseline").replace("{amount}", formatBalanceAmount(bucket.baseline, bucket.currency))

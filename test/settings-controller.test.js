@@ -64,22 +64,6 @@ describe("createSettingsController construction", () => {
   });
 });
 
-describe("quota ring display mode persistence", () => {
-  it("accepts remaining through the controller and restores it after relaunch", async () => {
-    const p = makeTempPath();
-    const ctrl = createSettingsController({ prefsPath: p });
-
-    const result = await ctrl.applyUpdate("quotaRingDisplayMode", "remaining");
-
-    assert.deepStrictEqual(result, { status: "ok" });
-    assert.strictEqual(ctrl.get("quotaRingDisplayMode"), "remaining");
-    assert.strictEqual(prefs.load(p).snapshot.quotaRingDisplayMode, "remaining");
-
-    const relaunched = createSettingsController({ prefsPath: p });
-    assert.strictEqual(relaunched.get("quotaRingDisplayMode"), "remaining");
-  });
-});
-
 describe("mobile permission preview controller boundary", () => {
   it("rejects generic writers for the consent-only child key", async () => {
     const ctrl = createSettingsController({ prefsPath: makeTempPath() });
@@ -1877,27 +1861,5 @@ describe("idle behavior controller boundary", () => {
     assert.match(result.message, /disk full/);
     assert.deepStrictEqual(ctrl.getSnapshot(), before);
     assert.strictEqual(events.length, 0);
-  });
-});
-
-
-describe("quota ring selection commits", () => {
-  it("persists and broadcasts the first toggle once without an intermediate automatic selection", async () => {
-    const prefsPath = makeTempPath();
-    const ctrl = createSettingsController({ prefsPath });
-    const events = [];
-    ctrl.subscribe(event => events.push(event.changes));
-    const result = await ctrl.applyCommand("setQuotaRingProviderShown", {
-      key: "claudeQuota", shown: false,
-      currentShownProviders: ["antigravityQuota", "claudeQuota", "codexQuota"],
-    });
-    assert.strictEqual(result.status, "ok");
-    assert.deepStrictEqual(events, [{ quotaRingShownProviders: ["antigravityQuota", "codexQuota"] }]);
-    assert.deepStrictEqual(prefs.load(prefsPath).snapshot.quotaRingShownProviders, ["antigravityQuota", "codexQuota"]);
-    const rejected = await ctrl.applyCommand("setQuotaRingProviderShown", { key: "kimiQuota", shown: true });
-    assert.strictEqual(rejected.status, "ok");
-    const overflow = await ctrl.applyCommand("setQuotaRingProviderShown", { key: "claudeQuota", shown: true });
-    assert.strictEqual(overflow.status, "error");
-    assert.strictEqual(events.length, 2);
   });
 });

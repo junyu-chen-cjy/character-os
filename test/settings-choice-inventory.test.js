@@ -34,7 +34,6 @@ test("the migrated choice inventory distinguishes navigation from values", () =>
     ["settings-tab-permissions.js", "buildTabs", ["settings-permissions"]],
     ["settings-tab-pet.js", "buildSegmentedRadio", ["idle-behavior-mode", "roam-movement-style", "idle-activity-frequency"]],
     ["settings-tab-notifications.js", "buildSegmentedRadio", ["bubble-placement-mode", "bubble-follow-preference", "bubble-fixed-corner"]],
-    ["settings-tab-sessions.js", "buildSegmentedRadio", ["quota-ring-display-mode"]],
     ["settings-tab-permissions.js", "buildSegmentedRadio", ["permission-automation"]],
     ["settings-tab-telegram-approval.js", "buildSegmentedRadio", ["feishu-platform", "feishu-id-type", "approval-completion-output"]],
     ["settings-tab-recap.js", "buildSegmentedRadio", ["recap-period"]],

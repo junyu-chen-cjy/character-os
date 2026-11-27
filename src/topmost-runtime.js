@@ -78,7 +78,6 @@ function createTopmostRuntime(options = {}) {
   ));
   const getUpdateBubbleWindow = options.getUpdateBubbleWindow || (() => null);
   const getSessionHudWindow = options.getSessionHudWindow || (() => null);
-  const getQuotaRingWindow = options.getQuotaRingWindow || (() => null);
   const getContextMenuOwner = options.getContextMenuOwner || (() => null);
   const getNearestWorkArea = options.getNearestWorkArea || (() => null);
   const getPetWindowBounds = options.getPetWindowBounds || (() => null);
@@ -349,7 +348,6 @@ function createTopmostRuntime(options = {}) {
     }
     apply(getUpdateBubbleWindow());
     apply(getSessionHudWindow());
-    apply(getQuotaRingWindow());
     apply(getContextMenuOwner());
     syncImeEditingPetDodge();
   }
@@ -612,7 +610,7 @@ function createTopmostRuntime(options = {}) {
     if (!isWin || topmostWatchdog) return;
     topmostWatchdog = setIntervalFn(() => {
       // The pet + hit windows normally stand down under fullscreen. Capture
-      // overlays also hold the update bubble, HUD and quota ring in place;
+      // overlays also hold the update bubble and HUD in place;
       // permission bubbles remain deliberate interruptions the user must act on.
       // #562: stand down topmost over a fullscreen foreground app UNLESS the
       // user opted into overlay mode (then keep floating on top). The hit
@@ -653,10 +651,6 @@ function createTopmostRuntime(options = {}) {
         reassertWindowAndTaskbar(sessionHudWin, { topmost: floatingTopmostMode });
       }
 
-      const quotaRingWin = getQuotaRingWindow();
-      if (isLiveWindow(quotaRingWin) && quotaRingWin.isVisible()) {
-        reassertWindowAndTaskbar(quotaRingWin, { topmost: floatingTopmostMode });
-      }
 
       const contextMenuOwner = getContextMenuOwner();
       if (isLiveWindow(contextMenuOwner)) {

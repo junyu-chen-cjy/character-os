@@ -134,7 +134,7 @@ function createSessionsHarness(hudEnabled) {
   return { core, body, sections, configs };
 }
 
-test("temporary Codex completion switch is a HUD child and patches both directions without touching quota", () => {
+test("temporary Codex completion switch is a HUD child and patches both directions", () => {
   const { core, sections, configs } = createSessionsHarness(false);
   const meta = core.state.mountedControls.generalSwitches.get(KEY);
   const hud = sections.find((section) => section.title === "sectionSessionHud");
@@ -142,12 +142,10 @@ test("temporary Codex completion switch is a HUD child and patches both directio
   assert.equal(configs.get(KEY).labelKey, LABEL);
   assert.equal(configs.get(KEY).descKey, DESC);
   assert.equal(meta.visual.disabled, true);
-  const quota = core.state.mountedControls.generalSwitches.get("sessionHudShowQuota");
   for (const enabled of [true, false]) {
     core.state.snapshot.sessionHudEnabled = enabled;
     assert.equal(core.tabs.sessions.patchInPlace({ sessionHudEnabled: enabled }), true);
     assert.equal(meta.visual.disabled, !enabled);
-    assert.equal(quota.visual.disabled, false);
   }
   for (const enabled of [true, false]) {
     core.state.snapshot[KEY] = enabled;

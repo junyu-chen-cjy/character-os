@@ -315,22 +315,6 @@ describe("settings-effect-router", () => {
     ]);
 
     calls.length = 0;
-    emit({ sessionHudShowQuota: false });
-    assert.deepStrictEqual(calls, [
-      ["updateMirrors", { sessionHudShowQuota: false }],
-      ["syncSessionHudVisibility"],
-      ["repositionFloatingBubbles"],
-    ]);
-
-    calls.length = 0;
-    emit({ quotaRingDisplayMode: "remaining" });
-    assert.deepStrictEqual(calls, [
-      ["updateMirrors", { quotaRingDisplayMode: "remaining" }],
-      ["syncSessionHudVisibility"],
-      ["repositionFloatingBubbles"],
-    ]);
-
-    calls.length = 0;
     emit({ quotaMergeSources: true });
     assert.deepStrictEqual(calls, [
       ["updateMirrors", { quotaMergeSources: true }],
@@ -906,15 +890,5 @@ describe("issue #1323: theme appearance routing", () => {
 
     assert.doesNotThrow(() => emit({ themeAppearance: { night: "light" } }));
     assert.ok(logs.some((entry) => String(entry[0]).includes("appearance")));
-  });
-});
-
-
-describe("quota ring selection effects", () => {
-  it("remeasures and repositions when manual provider selection changes", () => {
-    const { emit, calls } = createHarness();
-    emit({ quotaRingShownProviders: ["kimiQuota"] });
-    assert.strictEqual(calls.filter(call => call[0] === "syncSessionHudVisibility").length, 1);
-    assert.strictEqual(calls.filter(call => call[0] === "repositionFloatingBubbles").length, 1);
   });
 });

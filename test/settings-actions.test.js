@@ -227,7 +227,7 @@ describe("updateRegistry pure-data validators", () => {
   it("function-form boolean fields reject non-booleans", () => {
     const deps = { snapshot: baseSnapshot };
     for (const key of [
-      "sessionHudEnabled", "sessionHudShowElapsed", "sessionHudShowContextUsage", "sessionHudShowQuota", "sessionHudCleanupDetached",
+      "sessionHudEnabled", "sessionHudShowElapsed", "sessionHudShowContextUsage", "sessionHudCleanupDetached",
       "sessionHudShowStateLabels", "sessionHudPinned",
       "miniMode", "openAtLoginHydrated", "soundMuted", "bubbleFollowPet",
       "hideBubbles", "permissionBubblesEnabled", "lowPowerIdleMode",
@@ -270,13 +270,6 @@ describe("updateRegistry pure-data validators", () => {
     assert.strictEqual(updateRegistry.idleActivityFrequency(true).status, "error");
   });
 
-  it("accepts only supported quota ring display modes", () => {
-    assert.strictEqual(updateRegistry.quotaRingDisplayMode("used").status, "ok");
-    assert.strictEqual(updateRegistry.quotaRingDisplayMode("remaining").status, "ok");
-    assert.strictEqual(updateRegistry.quotaRingDisplayMode("available").status, "error");
-    assert.strictEqual(updateRegistry.quotaRingDisplayMode(true).status, "error");
-  });
-
   it("accepts only supported bubble placement enums", () => {
     for (const value of ["auto", "left", "right"]) {
       assert.strictEqual(updateRegistry.bubbleFollowPreference(value).status, "ok");
@@ -302,25 +295,6 @@ describe("updateRegistry pure-data validators", () => {
     assert.strictEqual(updateRegistry.telegramMigrationLastNotified("legacy-migration", deps).status, "ok");
     assert.strictEqual(updateRegistry.telegramMigrationLastNotified(null, deps).status, "error");
     assert.strictEqual(updateRegistry.telegramMigrationLastNotified(42, deps).status, "error");
-  });
-
-  it("hidden quota providers validate as a bounded list of non-empty strings", () => {
-    const entry = updateRegistry.quotaRingHiddenProviders;
-    const check = (value) => (typeof entry === "function" ? entry(value) : entry.validate(value));
-    assert.strictEqual(check([]).status, "ok");
-    assert.strictEqual(check(["codexQuota", "kimiQuota"]).status, "ok");
-    // Shape only — an unrecognized key is accepted on purpose, because
-    // rejecting it would un-hide the provider behind the user's back.
-    assert.strictEqual(check(["notAProviderYet"]).status, "ok");
-    assert.strictEqual(check("codexQuota").status, "error", "a bare string is not a list");
-    assert.strictEqual(check(null).status, "error");
-    assert.strictEqual(check([""]).status, "error");
-    assert.strictEqual(check(["  "]).status, "error");
-    assert.strictEqual(check([1]).status, "error");
-    assert.strictEqual(
-      check(Array.from({ length: 200 }, (_v, i) => `p${i}`)).status, "error",
-      "an unbounded list must be refused at the command boundary, not silently truncated"
-    );
   });
 
   it("Claude usage collection validates booleans and delegates the opt-in mutation", async () => {
@@ -3851,47 +3825,4 @@ it("issue #1316: a platform rebuild preserves the original source nonce and dead
     assert.strictEqual(acceptedRoutingNonces(rebuilt, time).includes(profile.routingNonce), false);
     assert.strictEqual(JSON.stringify(profile), original);
   }
-});
-
-
-describe("setQuotaRingProviderShown command", () => {
-  it("materializes only the actually drawn providers and applies the first toggle atomically", () => {
-    const snapshot = { quotaRingShownProviders: null, quotaRingHiddenProviders: [] };
-    const result = commandRegistry.setQuotaRingProviderShown({ key: "claudeQuota", shown: false,
-      currentShownProviders: ["antigravityQuota", "claudeQuota", "codexQuota"] }, { snapshot });
-    assert.deepStrictEqual(result, { status: "ok", commit: {
-      quotaRingShownProviders: ["antigravityQuota", "codexQuota"] } });
-    assert.strictEqual(snapshot.quotaRingShownProviders, null);
-  });
-  it("uses the durable manual selection instead of a stale materialization list", () => {
-    const result = commandRegistry.setQuotaRingProviderShown({ key: "kimiQuota", shown: true,
-      currentShownProviders: ["antigravityQuota", "codexQuota"] },
-      { snapshot: { quotaRingShownProviders: ["claudeQuota"] } });
-    assert.deepStrictEqual(result.commit, { quotaRingShownProviders: ["claudeQuota", "kimiQuota"] });
-  });
-  it("rejects more than three selections and malformed payloads", () => {
-    for (const payload of [null, { key: 2, shown: true }, { key: "", shown: true }, { key: "kimiQuota", shown: 1 },
-      { key: "kimiQuota", shown: true },
-      { key: "kimiQuota", shown: true, currentShownProviders: ["a", "b", "c"] },
-      { key: "kimiQuota", shown: false, currentShownProviders: ["a", "b", "c", "d"] },
-      { key: "kimiQuota", shown: true, currentShownProviders: [null] }]) {
-      assert.strictEqual(commandRegistry.setQuotaRingProviderShown(payload,
-        { snapshot: { quotaRingShownProviders: null } }).status, "error", JSON.stringify(payload));
-    }
-  });
-});
-
-
-describe("quota ring selection vacancies", () => {
-  it("frees an absent provider selection before accepting a newly connected provider", () => {
-    const snapshot = { quotaRingShownProviders: ["antigravityQuota", "claudeQuota", "codexQuota"] };
-    const enableKimi = { key: "kimiQuota", shown: true };
-    assert.strictEqual(commandRegistry.setQuotaRingProviderShown(enableKimi, { snapshot }).status, "error");
-    const remove = commandRegistry.setQuotaRingProviderShown({ key: "codexQuota", shown: false }, { snapshot });
-    assert.strictEqual(remove.status, "ok");
-    Object.assign(snapshot, remove.commit);
-    const enable = commandRegistry.setQuotaRingProviderShown(enableKimi, { snapshot });
-    assert.strictEqual(enable.status, "ok");
-    assert.deepStrictEqual(enable.commit.quotaRingShownProviders, ["antigravityQuota", "claudeQuota", "kimiQuota"]);
-  });
 });

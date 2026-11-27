@@ -5,7 +5,6 @@ const { execFile } = require("node:child_process");
 const path = require("node:path");
 const { keepOutOfTaskbar } = require("./taskbar");
 const { clampTextScale, scaleHeight, applyZoomToWindow } = require("./text-scale");
-const ringGeom = require("./quota-ring-geometry");
 
 const isLinux = process.platform === "linux";
 const isMac = process.platform === "darwin";
@@ -91,20 +90,14 @@ function buildBridgeRect(aRaw, bRaw) {
   };
 }
 
-function computeHaloHotZone({ petHitRect, haloBounds, ringBounds, pad = HOT_ZONE_PAD }) {
+function computeHaloHotZone({ petHitRect, haloBounds, pad = HOT_ZONE_PAD }) {
   const rects = [];
   const pet = toEdgesRect(petHitRect);
   const halo = toEdgesRect(haloBounds);
-  const ring = toEdgesRect(ringBounds);
   if (pet) rects.push(pet);
   if (halo) {
     rects.push(halo);
     const bridge = pet ? buildBridgeRect(pet, halo) : null;
-    if (bridge) rects.push(bridge);
-  }
-  if (ring) {
-    rects.push(ring);
-    const bridge = pet ? buildBridgeRect(pet, ring) : null;
     if (bridge) rects.push(bridge);
   }
   return { rects, pad: Number.isFinite(pad) ? pad : 0 };
@@ -205,17 +198,13 @@ function initPetHalo(ctx) {
   let haloVisibleLogical = false;
   let lastReservedOffset = 0;
 
-  let ringWindow = null;
-  let ringLoaded = false;
-  let ringSide = "left";
-
   let latestSnapshot = null;
   let hoverActive = false;
   let hoverOpenTimer = null;
   let hideAnimTimer = null;
   let pollTimer = null;
   let visibleHoldUntil = 0;
-  const surfaceHover = { pet: false, halo: false, ring: false };
+  const surfaceHover = { pet: false, halo: false };
   const ipcDisposers = [];
 
   function getTextScale() {
@@ -236,22 +225,6 @@ function initPetHalo(ctx) {
     if (typeof ctx.getMiniMode === "function" && ctx.getMiniMode()) return true;
     if (typeof ctx.getMiniTransitioning === "function" && ctx.getMiniTransitioning()) return true;
     return false;
-  }
-
-  function getEffectiveShownProviders() {
-    if (Array.isArray(ctx.quotaRingShownProviders) && ctx.quotaRingShownProviders.length > 0) {
-      return ctx.quotaRingShownProviders;
-    }
-    return ["antigravityQuota", "codexQuota"];
-  }
-
-  function countCoins(snapshot = latestSnapshot || getSnapshot()) {
-    return ringGeom.countQuotaCoins(
-      snapshot,
-      ctx.sessionHudShowQuota !== false,
-      ctx.quotaRingHiddenProviders,
-      getEffectiveShownProviders()
-    );
   }
 
   function buildHaloStatePayload(snapshot = latestSnapshot || getSnapshot()) {
@@ -290,32 +263,6 @@ function initPetHalo(ctx) {
     });
   }
 
-  function sendRingI18n() {
-    if (typeof ctx.getI18n !== "function") return;
-    if (!ringWindow || ringWindow.isDestroyed() || !ringLoaded) return;
-    if (!ringWindow.webContents || ringWindow.webContents.isDestroyed()) return;
-    ringWindow.webContents.send("quota-ring:lang-change", ctx.getI18n());
-  }
-
-  function sendRingVisibility(visible) {
-    if (!ringWindow || ringWindow.isDestroyed() || !ringLoaded) return;
-    if (!ringWindow.webContents || ringWindow.webContents.isDestroyed()) return;
-    ringWindow.webContents.send("quota-ring:visibility", !!visible);
-  }
-
-  function sendRingSnapshot(snapshot = latestSnapshot || getSnapshot(), side = ringSide) {
-    if (!snapshot || !ringWindow || ringWindow.isDestroyed() || !ringLoaded) return;
-    if (!ringWindow.webContents || ringWindow.webContents.isDestroyed()) return;
-    ringWindow.webContents.send("quota-ring:snapshot", {
-      accountQuota: Array.isArray(snapshot.accountQuota) ? snapshot.accountQuota : [],
-      quotaAgentIcons: snapshot.quotaAgentIcons || {},
-      displayMode: "remaining",
-      hiddenQuotaProviders: Array.isArray(ctx.quotaRingHiddenProviders) ? ctx.quotaRingHiddenProviders : [],
-      shownQuotaProviders: getEffectiveShownProviders(),
-      side,
-    });
-  }
-
   function getPetFollowContext() {
     if (!ctx.win || ctx.win.isDestroyed()) return null;
     const petBounds = typeof ctx.getPetWindowBounds === "function" ? ctx.getPetWindowBounds() : null;
@@ -330,18 +277,6 @@ function initPetHalo(ctx) {
       ? ctx.getNearestWorkArea(cx, cy)
       : { x: 0, y: 0, width: 1280, height: 800 };
     return { petBounds, hitRect, anchorRect, workArea };
-  }
-
-  function collectRingAvoidRects(haloContentBounds) {
-    const rects = [];
-    if (haloContentBounds) rects.push(haloContentBounds);
-    if (typeof ctx.getPermissionBubbleBounds === "function") {
-      try {
-        const permBounds = ctx.getPermissionBubbleBounds();
-        if (Array.isArray(permBounds)) rects.push(...permBounds);
-      } catch {}
-    }
-    return rects;
   }
 
   function ensureHaloWindow() {
@@ -396,74 +331,14 @@ function initPetHalo(ctx) {
     return haloWindow;
   }
 
-  function ensureQuotaRing() {
-    if (ringWindow && !ringWindow.isDestroyed()) return ringWindow;
-    if (!ctx.win || ctx.win.isDestroyed()) return null;
-
-    ringLoaded = false;
-    const scale = getTextScale();
-    const provisional = ringGeom.constants;
-    ringWindow = new BrowserWindow({
-      parent: ctx.win,
-      width: scaleHeight(provisional.COIN_SIZE + provisional.READOUT_W + 40, scale),
-      height: scaleHeight(provisional.COIN_SIZE * 2 + 40, scale),
-      show: false,
-      frame: false,
-      transparent: true,
-      resizable: false,
-      movable: false,
-      minimizable: false,
-      maximizable: false,
-      fullscreenable: false,
-      skipTaskbar: true,
-      alwaysOnTop: !isMac,
-      focusable: false,
-      hasShadow: false,
-      backgroundColor: "#00000000",
-      ...(isLinux ? { type: LINUX_WINDOW_TYPE } : {}),
-      ...(isMac ? { type: "panel" } : {}),
-      webPreferences: {
-        preload: path.join(__dirname, "preload-quota-ring.js"),
-        nodeIntegration: false,
-        contextIsolation: true,
-      },
-    });
-
-    if (isWin) ringWindow.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
-    if (typeof ctx.guardAlwaysOnTop === "function") ctx.guardAlwaysOnTop(ringWindow);
-
-    ringWindow.loadFile(path.join(__dirname, "quota-ring.html"));
-    ringWindow.webContents.once("did-finish-load", () => {
-      ringLoaded = true;
-      applyZoomToWindow(ringWindow, getTextScale());
-      sendRingI18n();
-      sendRingVisibility(ringWindow.isVisible());
-      syncSurfaces({ sendSnapshot: true });
-    });
-    ringWindow.on("closed", () => {
-      ringWindow = null;
-      ringLoaded = false;
-    });
-    return ringWindow;
-  }
-
-  function showPanelInactive(win, isHalo) {
+  function showPanelInactive(win) {
     if (!win || win.isDestroyed()) return;
-    if (isHalo && !haloLoaded) return;
-    if (!isHalo && !ringLoaded) return;
+    if (!haloLoaded) return;
     if (!win.isVisible()) {
       win.showInactive();
       keepOutOfTaskbar(win);
       if (isMac) deferMacFloatingVisibility(ctx, win);
       else if (typeof ctx.reapplyMacVisibility === "function") ctx.reapplyMacVisibility();
-      if (!isHalo) sendRingVisibility(true);
-    }
-  }
-
-  function hideQuotaRingNow() {
-    if (ringWindow && !ringWindow.isDestroyed()) {
-      if (ringWindow.isVisible()) sendRingVisibility(false);
-      ringWindow.hide();
     }
   }
 
@@ -499,46 +374,6 @@ function initPetHalo(ctx) {
     }, EXIT_ANIM_MS);
   }
 
-  function computeCurrentRingPlacement(snapshot, scale, haloContentBounds) {
-    const coinCount = countCoins(snapshot);
-    if (coinCount <= 0) return null;
-    const follow = getPetFollowContext();
-    if (!follow) return null;
-    return ringGeom.computeQuotaRingBounds({
-      hitRect: follow.hitRect,
-      anchorRect: follow.anchorRect,
-      workArea: follow.workArea,
-      coinCount,
-      scale,
-      avoidRects: collectRingAvoidRects(haloContentBounds),
-    });
-  }
-
-  function syncQuotaRing(snapshot, scale, haloContentBounds, options = {}) {
-    const suppressed = isSuppressed();
-    const shouldShowRing = !suppressed && (ctx.sessionHudPinned === true || hoverActive);
-    const placement = shouldShowRing
-      ? computeCurrentRingPlacement(snapshot, scale, haloContentBounds)
-      : null;
-
-    if (!placement) {
-      hideQuotaRingNow();
-      return null;
-    }
-
-    const rwin = ensureQuotaRing();
-    if (!rwin || rwin.isDestroyed()) return null;
-    applyZoomToWindow(rwin, scale);
-    rwin.setBounds(placement.bounds);
-    const sideChanged = placement.side !== ringSide;
-    ringSide = placement.side;
-    if (options.sendSnapshot !== false || sideChanged) {
-      sendRingSnapshot(snapshot, placement.side);
-    }
-    showPanelInactive(rwin, false);
-    return placement;
-  }
-
   function syncSurfaces(options = {}) {
     const snapshot = options.snapshot || latestSnapshot || getSnapshot();
     latestSnapshot = snapshot;
@@ -548,12 +383,10 @@ function initPetHalo(ctx) {
       stopAutoHidePoll();
       hoverActive = false;
       hideHaloImmediate();
-      hideQuotaRingNow();
       return;
     }
 
     const scale = getTextScale();
-    let haloContentBounds = null;
 
     if (hoverActive) {
       if (hideAnimTimer) {
@@ -573,14 +406,13 @@ function initPetHalo(ctx) {
         : null;
 
       if (computed) {
-        haloContentBounds = computed.contentBounds;
         haloFlippedAbove = !!computed.flippedAbove;
         const hwin = ensureHaloWindow();
         if (hwin && !hwin.isDestroyed()) {
           applyZoomToWindow(hwin, scale);
           hwin.setBounds(computed.bounds);
           if (options.sendSnapshot !== false) sendHaloState(snapshot);
-          showPanelInactive(hwin, true);
+          showPanelInactive(hwin);
           haloVisibleLogical = true;
           sendHaloVisibility(true);
           notifyReservedOffsetIfChanged();
@@ -592,7 +424,6 @@ function initPetHalo(ctx) {
       hideHaloAnimated();
     }
 
-    syncQuotaRing(snapshot, scale, haloContentBounds, options);
   }
 
   function cancelHoverOpenTimer() {
@@ -608,7 +439,7 @@ function initPetHalo(ctx) {
   }
 
   function isCursorInsideHotZone() {
-    if (surfaceHover.halo || surfaceHover.ring) return true;
+    if (surfaceHover.halo) return true;
     let cursor = null;
     try {
       cursor = screen.getCursorScreenPoint();
@@ -622,13 +453,9 @@ function initPetHalo(ctx) {
     const haloBounds = haloWindow && !haloWindow.isDestroyed() && haloWindow.isVisible()
       ? haloWindow.getBounds()
       : null;
-    const ringBounds = ringWindow && !ringWindow.isDestroyed() && ringWindow.isVisible()
-      ? ringWindow.getBounds()
-      : null;
     const hotZone = computeHaloHotZone({
       petHitRect: follow.hitRect,
       haloBounds,
-      ringBounds,
       pad: Math.round(HOT_ZONE_PAD * scale),
     });
     return pointInHaloHotZone(cursor, hotZone);
@@ -655,7 +482,6 @@ function initPetHalo(ctx) {
     hoverActive = false;
     surfaceHover.pet = false;
     surfaceHover.halo = false;
-    surfaceHover.ring = false;
     syncSurfaces({ sendSnapshot: false });
   }
 
@@ -679,7 +505,7 @@ function initPetHalo(ctx) {
   }
 
   function handleHoverSignal(surface, hovered) {
-    if (surface === "pet" || surface === "halo" || surface === "ring") {
+    if (surface === "pet" || surface === "halo") {
       surfaceHover[surface] = !!hovered;
     }
     if (hovered) {
@@ -698,7 +524,7 @@ function initPetHalo(ctx) {
         hoverOpenTimer = setTimeout(() => {
           hoverOpenTimer = null;
           if (isSuppressed()) return;
-          if (surfaceHover.pet || surfaceHover.halo || surfaceHover.ring || isCursorInsideHotZone()) {
+          if (surfaceHover.pet || surfaceHover.halo || isCursorInsideHotZone()) {
             activateHoverNow();
           }
         }, HOVER_OPEN_DELAY_MS);
@@ -706,7 +532,7 @@ function initPetHalo(ctx) {
       return;
     }
 
-    if (!surfaceHover.pet && !surfaceHover.halo && !surfaceHover.ring && !hoverActive) {
+    if (!surfaceHover.pet && !surfaceHover.halo && !hoverActive) {
       cancelHoverOpenTimer();
     }
   }
@@ -717,8 +543,6 @@ function initPetHalo(ctx) {
       hoverActive = false;
       stopAutoHidePoll();
       syncSurfaces({ immediateHide: true, sendSnapshot: false });
-    } else {
-      repositionQuotaRing();
     }
   }
 
@@ -740,15 +564,6 @@ function initPetHalo(ctx) {
     syncSurfaces({ sendSnapshot: false });
   }
 
-  function repositionQuotaRing() {
-    const snapshot = latestSnapshot || getSnapshot();
-    const scale = getTextScale();
-    const haloBounds = haloWindow && !haloWindow.isDestroyed() && haloWindow.isVisible() && haloVisibleLogical
-      ? haloWindow.getBounds()
-      : null;
-    syncQuotaRing(snapshot, scale, haloBounds, { sendSnapshot: false });
-  }
-
   function broadcastSessionSnapshot(snapshot) {
     latestSnapshot = snapshot;
     syncSurfaces({ snapshot, sendSnapshot: true });
@@ -756,7 +571,6 @@ function initPetHalo(ctx) {
 
   function sendI18n() {
     sendHaloState();
-    sendRingI18n();
   }
 
   function handlePinnedChanged() {
@@ -781,7 +595,6 @@ function initPetHalo(ctx) {
     };
 
     handle("pet-halo:get-state", (event) => {
-      if (!isHaloSender(event)) return null;
       latestSnapshot = getSnapshot();
       return buildHaloStatePayload(latestSnapshot);
     });
@@ -791,12 +604,7 @@ function initPetHalo(ctx) {
       handleHoverSignal(payload.surface, !!payload.hovered);
     });
 
-    on("quota-ring:hover", (_event, hovered) => {
-      handleHoverSignal("ring", !!hovered);
-    });
-
     on("pet-halo:layout", (event, metrics) => {
-      if (!isHaloSender(event) || !metrics) return;
       const nextHeight = Number(metrics.height);
       if (!Number.isFinite(nextHeight)) return;
       const clamped = clamp(Math.ceil(nextHeight), HALO_MIN_HEIGHT, HALO_MAX_HEIGHT);
@@ -806,7 +614,6 @@ function initPetHalo(ctx) {
     });
 
     handle("pet-halo:action", async (event, payload) => {
-      if (!isHaloSender(event) || !payload || typeof payload !== "object") return { status: "error" };
       const type = payload.type;
       hoverActive = false;
       stopAutoHidePoll();
@@ -829,11 +636,6 @@ function initPetHalo(ctx) {
       return { status: "error" };
     });
 
-    // quota-ring.html uses these two channels via preload-quota-ring.js
-    handle("session-hud:get-i18n", () => (typeof ctx.getI18n === "function" ? ctx.getI18n() : { lang: "en", translations: {} }));
-    on("session-hud:open-dashboard", () => {
-      if (typeof ctx.openDashboard === "function") ctx.openDashboard({ source: "quota-ring" });
-    });
   }
 
   function cleanup() {
@@ -851,9 +653,6 @@ function initPetHalo(ctx) {
     haloWindow = null;
     haloLoaded = false;
     haloVisibleLogical = false;
-    if (ringWindow && !ringWindow.isDestroyed()) ringWindow.destroy();
-    ringWindow = null;
-    ringLoaded = false;
   }
 
   if (ctx.ipcMain) registerIpc(ctx.ipcMain);
@@ -862,11 +661,9 @@ function initPetHalo(ctx) {
     syncSessionHud: () => syncSurfaces({ sendSnapshot: true }),
     broadcastSessionSnapshot,
     repositionSessionHud,
-    repositionQuotaRing,
     sendI18n,
     getHudReservedOffset: readReservedOffset,
     getWindow: () => haloWindow,
-    getQuotaRingWindow: () => ringWindow,
     handleHoverSignal,
     handlePinnedChanged,
     notifyImmediateSuppression,

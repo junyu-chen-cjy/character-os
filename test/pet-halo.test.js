@@ -62,7 +62,7 @@ describe("pet-halo layout and hover bridge geometry", () => {
     assert.ok(rightEdge.bounds.x + rightEdge.bounds.width <= workArea.x + workArea.width - 8);
   });
 
-  it("keeps cursor inside the safe bridge corridor between pet, halo dock, and quota ring", () => {
+  it("keeps cursor inside the safe bridge corridor between pet and halo dock", () => {
     const hitRect = { left: 600, top: 400, right: 700, bottom: 500 };
     const layout = computeHaloBounds({
       hitRect,
@@ -71,11 +71,9 @@ describe("pet-halo layout and hover bridge geometry", () => {
       height: 184,
       scale: 1,
     });
-    const ringBounds = { x: 706, y: 410, width: 96, height: 64 };
     const hotZone = computeHaloHotZone({
       petHitRect: hitRect,
       haloBounds: layout.bounds,
-      ringBounds,
     });
 
     // Direct gap between pet bottom and halo top must stay inside hotZone
@@ -86,9 +84,6 @@ describe("pet-halo layout and hover bridge geometry", () => {
     const diagonalBridgePoint = { x: layout.bounds.x + 24, y: layout.bounds.y - 3 };
     assert.equal(pointInHaloHotZone(diagonalBridgePoint, hotZone), true);
 
-    // Gap between pet right edge and side quota ring must stay inside bridge
-    const ringBridgePoint = { x: 703, y: 440 };
-    assert.equal(pointInHaloHotZone(ringBridgePoint, hotZone), true);
 
     // Far desktop point must NOT be intercepted or keep hover alive
     assert.equal(pointInHaloHotZone({ x: 200, y: 200 }, hotZone), false);

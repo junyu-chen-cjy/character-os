@@ -112,12 +112,9 @@ describe("prefs.getDefaults", () => {
     assert.strictEqual(d.sessionHudShowStateLabels, true);
     assert.strictEqual(d.sessionHudShowElapsed, false);
     assert.strictEqual(d.sessionHudShowContextUsage, true);
-    assert.strictEqual(d.sessionHudShowQuota, true);
-    assert.strictEqual(d.quotaRingDisplayMode, "used");
     // Empty means every connected provider draws, matching the behaviour before
     // the preference existed. Storing what is HIDDEN (not what is shown) is why
     // a newly connected provider appears on its own instead of silently missing.
-    assert.deepStrictEqual(d.quotaRingHiddenProviders, []);
     assert.strictEqual(d.claudeQuotaCollectionEnabled, false);
     assert.strictEqual(d.kimiQuotaCollectionEnabled, false);
     assert.strictEqual(d.quotaMergeSources, false);
@@ -335,7 +332,6 @@ describe("prefs.validate", () => {
       sessionHudShowStateLabels: "yes",
       sessionHudShowElapsed: "yes",
       sessionHudShowContextUsage: "yes",
-      quotaRingDisplayMode: "available",
       sessionHudCleanupDetached: "yes",
       hideBubbles: 0,        // wrong type
       permissionBubblesEnabled: "yes",
@@ -365,7 +361,6 @@ describe("prefs.validate", () => {
     assert.strictEqual(v.sessionHudShowStateLabels, true);
     assert.strictEqual(v.sessionHudShowElapsed, false);
     assert.strictEqual(v.sessionHudShowContextUsage, true);
-    assert.strictEqual(v.quotaRingDisplayMode, "used");
     assert.strictEqual(v.sessionHudCleanupDetached, true);
     assert.strictEqual(v.hideBubbles, false);
     assert.strictEqual(v.permissionBubblesEnabled, true);
@@ -380,11 +375,6 @@ describe("prefs.validate", () => {
     assert.strictEqual(v.savedPixelWidth, 0);
     assert.strictEqual(v.savedPixelHeight, 0);
     assert.strictEqual(v.savedPixelWorkArea, null);
-  });
-
-  it("preserves both supported quota ring display modes", () => {
-    assert.strictEqual(prefs.validate({ quotaRingDisplayMode: "used" }).quotaRingDisplayMode, "used");
-    assert.strictEqual(prefs.validate({ quotaRingDisplayMode: "remaining" }).quotaRingDisplayMode, "remaining");
   });
 
   it("validates bubble placement enums independently from the follow toggle", () => {
@@ -575,39 +565,6 @@ describe("prefs.validate", () => {
     assert.strictEqual(prefs.validate({ textScale: 2 }).textScale, 1);
     assert.strictEqual(prefs.validate({ textScale: "1.2" }).textScale, 1);
     assert.strictEqual(prefs.getDefaults().textScale, 1);
-  });
-
-  it("normalizes hidden quota providers without inventing or dropping choices", () => {
-    // Deliberately NOT validated against the ring's provider table. Rejecting an
-    // unfamiliar key here would silently un-hide a provider whenever a rename,
-    // load order, or a not-yet-registered provider made the key look wrong —
-    // the user's coin would come back on its own. Shape only; consumers match
-    // by key, so a stale entry is inert.
-    assert.deepStrictEqual(
-      prefs.validate({ quotaRingHiddenProviders: ["codexQuota", "somethingNew"] })
-        .quotaRingHiddenProviders,
-      ["codexQuota", "somethingNew"]
-    );
-    // Junk shapes collapse to "hide nothing" rather than throwing away the ring.
-    for (const raw of [undefined, null, "codexQuota", 7, {}]) {
-      assert.deepStrictEqual(
-        prefs.validate({ quotaRingHiddenProviders: raw }).quotaRingHiddenProviders, [],
-        `${JSON.stringify(raw)} should normalize to an empty list`
-      );
-    }
-    // Blank/duplicate/non-string entries are dropped; order is preserved.
-    assert.deepStrictEqual(
-      prefs.validate({
-        quotaRingHiddenProviders: ["kimiQuota", "", "  ", null, 3, "kimiQuota", "codexQuota"],
-      }).quotaRingHiddenProviders,
-      ["kimiQuota", "codexQuota"]
-    );
-    // Bounded, so a corrupt file cannot grow the preference without limit.
-    const flood = Array.from({ length: 200 }, (_v, i) => `p${i}`);
-    assert.strictEqual(
-      prefs.validate({ quotaRingHiddenProviders: flood }).quotaRingHiddenProviders.length,
-      prefs.MAX_HIDDEN_QUOTA_PROVIDERS
-    );
   });
 
   it("normalizes agents (drops malformed entries)", () => {
@@ -2691,21 +2648,5 @@ describe("idle behavior file normalization", () => {
     assert.strictEqual(snapshot.freeRoam, true);
     assert.strictEqual(snapshot.idleActivities, prefs.getDefaults().idleActivities);
     assert.strictEqual(snapshot.idleActivities, false);
-  });
-});
-
-
-describe("quota ring manual selection preference", () => {
-  it("preserves automatic null and explicit empty manual selections", () => {
-    assert.strictEqual(prefs.getDefaults().quotaRingShownProviders, null);
-    for (const raw of [undefined, null, 5, "kimiQuota", {}]) {
-      assert.strictEqual(prefs.validate({ quotaRingShownProviders: raw }).quotaRingShownProviders, null);
-    }
-    assert.deepStrictEqual(prefs.validate({ quotaRingShownProviders: [] }).quotaRingShownProviders, []);
-  });
-  it("cleans and deduplicates provider keys and caps persisted arrays at three", () => {
-    assert.deepStrictEqual(prefs.validate({ quotaRingShownProviders:
-      [" kimiQuota ", null, "", "kimiQuota", "newProvider", "codex\0Quota", "claudeQuota"]
-    }).quotaRingShownProviders, ["kimiQuota", "newProvider", "codexQuota"]);
   });
 });

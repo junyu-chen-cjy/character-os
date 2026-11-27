@@ -51,7 +51,6 @@
 const {
   CURRENT_VERSION,
   MAX_CUSTOM_DISCOVERY_PATHS,
-  MAX_HIDDEN_QUOTA_PROVIDERS,
   isValidSettingsWindowBounds,
   normalizePathList,
 } = require("./prefs");
@@ -454,8 +453,6 @@ const updateRegistry = {
   sessionHudShowContextUsage: requireBoolean("sessionHudShowContextUsage"),
   sessionHudHideCompletedCodexEphemeral: requireBoolean("sessionHudHideCompletedCodexEphemeral"),
   sessionHudHideActiveCodexEphemeral: requireBoolean("sessionHudHideActiveCodexEphemeral"),
-  sessionHudShowQuota: requireBoolean("sessionHudShowQuota"),
-  quotaRingDisplayMode: requireEnum("quotaRingDisplayMode", ["used", "remaining"]),
   quotaAlertsEnabled: requireBoolean("quotaAlertsEnabled"),
   quotaRecoveryAlertsEnabled: requireBoolean("quotaRecoveryAlertsEnabled"),
   quotaAlertThresholds(value) {
@@ -464,35 +461,6 @@ const updateRegistry = {
       && value.every((n) => Number.isInteger(n) && n >= 1 && n <= 99)
       ? { status: "ok" }
       : { status: "error", message: "Choose 1–5 different remaining-percent thresholds (1–99)." };
-  },
-  // Shape only — the entries are provider keys, and deliberately not checked
-  // against the ring's provider list here (see prefs.js: rejecting an
-  // unfamiliar key would un-hide a provider behind the user's back).
-  quotaRingHiddenProviders(value) {
-    if (!Array.isArray(value)) {
-      return { status: "error", message: "quotaRingHiddenProviders must be an array" };
-    }
-    if (value.length > MAX_HIDDEN_QUOTA_PROVIDERS) {
-      return {
-        status: "error",
-        message: `quotaRingHiddenProviders must contain at most ${MAX_HIDDEN_QUOTA_PROVIDERS} entries`,
-      };
-    }
-    if (value.some((entry) => typeof entry !== "string" || !entry.trim())) {
-      return { status: "error", message: "quotaRingHiddenProviders must contain non-empty strings" };
-    }
-    return { status: "ok" };
-  },
-  quotaRingShownProviders: {
-    commandOnly: true,
-    validate(value) {
-      // Matches prefs.normalizeQuotaRingShownProviders and geometry.RING_MAX_COINS;
-      // the command limits provider choices, while geometry limits actual coins.
-      return value === null || (Array.isArray(value) && value.length <= 3
-        && value.every((key) => typeof key === "string" && key.trim()))
-        ? { status: "ok" }
-        : { status: "error", message: "Choose at most 3 quota providers" };
-    },
   },
   claudeQuotaCollectionEnabled: {
     validate: requireBoolean("claudeQuotaCollectionEnabled"),
@@ -2900,33 +2868,7 @@ function setTextScaleForDisplay(payload, deps) {
   return { status: "ok", commit: { textScaleByDisplay: next } };
 }
 
-function setQuotaRingProviderShown(payload, deps = {}) {
-  if (!payload || typeof payload.key !== "string" || !payload.key.trim()
-    || typeof payload.shown !== "boolean") {
-    return { status: "error", message: "A provider key and shown flag are required" };
-  }
-  const snapshot = deps.snapshot || {};
-  // The UI passes the actual visible set for the first toggle. After that,
-  // durable selections win over stale UI lists and preserve absent providers.
-  // Keep this provider-choice cap in sync with the validator above, prefs'
-  // normalization and quota-ring-geometry.RING_MAX_COINS.
-  const current = Array.isArray(snapshot.quotaRingShownProviders)
-    ? snapshot.quotaRingShownProviders : payload.currentShownProviders;
-  if (!Array.isArray(current) || current.length > 3
-    || current.some((key) => typeof key !== "string" || !key.trim())) {
-    return { status: "error", message: "Current quota selection must contain at most 3 provider keys" };
-  }
-  const key = payload.key.replace(/\0/g, "").trim().slice(0, 64);
-  const next = [...new Set(current)].filter((entry) => entry !== key);
-  if (payload.shown) next.push(key);
-  if (next.length > 3 || !key) {
-    return { status: "error", message: "Choose at most 3 quota providers" };
-  }
-  return { status: "ok", commit: { quotaRingShownProviders: next } };
-}
-
 const commandRegistry = {
-  setQuotaRingProviderShown,
   addCustomApplication,
   removeTheme,
   installHooks,

@@ -44,8 +44,6 @@ const FROZEN_KEYS = [
   "sessionHudShowStateLabels",
   "sessionHudShowElapsed",
   "sessionHudShowContextUsage",
-  "sessionHudShowQuota",
-  "quotaRingDisplayMode",
   "quotaAlertsEnabled",
   "quotaAlertThresholds",
   "quotaRecoveryAlertsEnabled",
@@ -132,8 +130,6 @@ const EXPECTED_KEYS = {
     "sessionHudCleanupDetached",
     "sessionHudHideCompletedCodexEphemeral",
     "sessionHudHideActiveCodexEphemeral",
-    "sessionHudShowQuota",
-    "quotaRingDisplayMode",
     "quotaMergeSources",
     "quotaAlertsEnabled",
     "quotaAlertThresholds",
@@ -470,8 +466,6 @@ function makeSnapshot(overrides = {}) {
     sessionHudCleanupDetached: true,
     sessionHudHideCompletedCodexEphemeral: false,
     sessionHudHideActiveCodexEphemeral: false,
-    sessionHudShowQuota: true,
-    quotaRingDisplayMode: "used",
     quotaMergeSources: false,
     quotaAlertsEnabled: true,
     quotaAlertThresholds: [20, 10],
@@ -575,7 +569,6 @@ function createHarness({
     getTextScaleContext: () => Promise.resolve({ percent: 100 }),
     getSizeContext: () => Promise.resolve({ ui: 50, synced: true, overMax: false }),
     getQuotaSourceCount: () => Promise.resolve(1),
-    getQuotaRingProviders: () => Promise.resolve([]),
     getRoamFence: () => Promise.resolve({ status: "ok", active: false, fence: null }),
     openDashboard: () => {},
     ...settingsAPI,
@@ -968,8 +961,6 @@ describe("settings tab split", () => {
 
     const sessions = createHarness({ tab: "sessions", snapshot: makeSnapshot() });
     const hudSwitch = sessions.getSwitch("sessionHudEnabled");
-    const displayMode = sessions.core.state.mountedControls.quotaRingDisplayMode;
-    const displayModeElement = displayMode.element;
     const thresholds = sessions.core.state.mountedControls.quotaAlertThresholds;
     const thresholdsRow = thresholds.row;
     const alertsSwitch = sessions.getSwitch("quotaAlertsEnabled");
@@ -981,11 +972,6 @@ describe("settings tab split", () => {
     assert.strictEqual(sessions.getSwitch("sessionHudEnabled"), hudSwitch);
     assert.ok(sessions.content.contains(hudSwitch));
     assert.strictEqual(hudSwitch.classList.contains("on"), false);
-    sessions.apply("quotaRingDisplayMode", "remaining");
-    const currentDisplayModeElement = sessions.content.querySelector(".quota-ring-display-mode-choice");
-    assert.strictEqual(currentDisplayModeElement, displayModeElement);
-    assert.ok(sessions.content.contains(displayModeElement));
-    assert.strictEqual(activeValue(currentDisplayModeElement), "remaining");
     sessions.apply("quotaAlertThresholds", [50, 20, 10]);
     const currentThresholdsRow = findRow(sessions, "quotaThresholds");
     assert.strictEqual(currentThresholdsRow, thresholdsRow);

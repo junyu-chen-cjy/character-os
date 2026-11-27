@@ -69,7 +69,7 @@ test("DeepSeek labels and connection states exist in all seven languages", () =>
   require("../src/settings-i18n");
   for (const lang of ["en", "zh", "zh-TW", "ko", "ja", "pt-BR", "es"]) {
     const translate = createTranslator(() => lang);
-    for (const key of ["quotaRingBalance", "dashboardQuotaSectionDeepseek", "dashboardDeepseekBalanceBaseline"]) {
+    for (const key of ["quotaBalance", "dashboardQuotaSectionDeepseek", "dashboardDeepseekBalanceBaseline"]) {
       assert.notEqual(translate(key), key);
     }
     const strings = globalThis.ClawdSettingsI18n.STRINGS[lang];

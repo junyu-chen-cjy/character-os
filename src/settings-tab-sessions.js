@@ -1,6 +1,6 @@
 "use strict";
 
-// Sessions tab: the session HUD, quota ring and reminders, the session
+// Sessions tab: the session HUD, quota reminders, the session
 // dashboard, and the timeout cleanup group. patchInPlace only accepts
 // SESSIONS_IN_PLACE_KEYS; it never patches notification or pet controls.
 (function initSettingsTabSessions(root) {
@@ -12,8 +12,6 @@
     "sessionHudCleanupDetached",
     "sessionHudHideCompletedCodexEphemeral",
     "sessionHudHideActiveCodexEphemeral",
-    "sessionHudShowQuota",
-    "quotaRingDisplayMode",
     "quotaMergeSources",
     "quotaAlertsEnabled",
     "quotaAlertThresholds",
@@ -82,22 +80,12 @@
     return row;
   }
 
-  let quotaProvidersBlock = null;
-
-  function buildQuotaRingGroup() {
-    const enabledRow = helpers.buildSwitchRow({
-      key: "sessionHudShowQuota",
-      labelKey: "rowQuotaRingEnabled",
-      descKey: "rowQuotaRingEnabledDesc",
-    });
+  function buildQuotaControls() {
     const mergeRow = helpers.buildSwitchRow({
       key: "quotaMergeSources",
       labelKey: "rowQuotaMergeSources",
       descKey: "rowQuotaMergeSourcesDesc",
     });
-    const displayModeRow = buildQuotaRingDisplayModeRow();
-    const providersBlock = buildQuotaRingProvidersBlock();
-    quotaProvidersBlock = providersBlock;
     // "Merge across machines" only matters with more than one reporting source
     // (WSL / SSH remotes). Hidden by default so single-machine users never see
     // a confusing no-op switch; revealed once multiple sources are confirmed.
@@ -119,9 +107,6 @@
     // Visibility of these rows follows the master switch; see syncReminderRowsVisibility.
     const reminderRows = [thresholdsRow, recoveryRow, testRow];
     const rows = [
-      enabledRow,
-      displayModeRow,
-      providersBlock.element,
       mergeRow,
       alertsEnabledRow,
       thresholdsRow,
@@ -150,226 +135,7 @@
         })
         .catch(() => {});
     }
-    providersBlock.load();
     return rows;
-  }
-
-  // Selection is per provider, while the budget counts coins from all sources.
-  // The list includes connected providers beyond the cap so users can swap them.
-  function buildQuotaRingProvidersBlock() {
-    const element = document.createElement("div");
-    element.className = "quota-ring-providers";
-    element.style.display = "none";
-    const head = document.createElement("div");
-    head.className = "row quota-ring-providers-head";
-    const headText = document.createElement("div");
-    headText.className = "row-text";
-    const headLabel = document.createElement("span");
-    headLabel.className = "row-label";
-    headLabel.textContent = t("rowQuotaRingProviders");
-    const headDesc = document.createElement("span");
-    headDesc.className = "row-desc";
-    headDesc.textContent = t("rowQuotaRingProvidersDesc");
-    headText.append(headLabel, headDesc);
-    head.appendChild(headText);
-    const limit = document.createElement("div");
-    limit.className = "row row-sub row-desc quota-ring-providers-limit";
-    limit.textContent = t("quotaRingProvidersLimit");
-    element.append(head, limit);
-
-    let providers = [];
-    let selectedProviders = state.snapshot && state.snapshot.quotaRingShownProviders;
-    let pendingChange = null;
-    let queryGeneration = 0;
-    const controls = new Map();
-
-    function isProviderChecked(provider) {
-      return provider.shown || (provider.selected && provider.coinCount === 0);
-    }
-
-    function syncControls() {
-      const visibleCount = providers.reduce((sum, provider) => sum + provider.shownCoinCount, 0);
-      const selectedCount = Array.isArray(selectedProviders)
-        ? selectedProviders.length
-        : providers.filter((provider) => provider.selected).length;
-      let hasBlockedProvider = false;
-      for (const provider of providers) {
-        const control = controls.get(provider.key);
-        if (!control) continue;
-        const blocked = !isProviderChecked(provider)
-          && (selectedCount >= 3 || visibleCount + provider.coinCount > 3);
-        if (blocked) hasBlockedProvider = true;
-        const checked = pendingChange && pendingChange.key === provider.key
-          ? pendingChange.shown : isProviderChecked(provider);
-        control.setState({
-          checked,
-          pending: !!pendingChange,
-          disabled: !!pendingChange || blocked,
-        });
-      }
-      limit.style.display = hasBlockedProvider ? "" : "none";
-    }
-
-    function applyCommittedSelection(selected) {
-      selectedProviders = selected;
-      let remaining = 3;
-      // Use the latest source counts even if a push arrived during the save.
-      // An absent selected provider keeps its choice slot, without a coin.
-      providers = providers.map((provider) => {
-        const isSelected = selected.includes(provider.key);
-        const count = isSelected ? Math.min(remaining, provider.coinCount) : 0;
-        remaining -= count;
-        return { ...provider, selected: isSelected, shown: count > 0, shownCoinCount: count };
-      });
-    }
-
-    function buildProviderRow(provider) {
-      const row = document.createElement("div");
-      row.className = "row row-sub quota-ring-provider-row";
-      row.dataset.providerKey = provider.key;
-      const text = document.createElement("div");
-      text.className = "row-text";
-      const label = document.createElement("span");
-      label.className = "row-label";
-      // Brand names identify the provider and deliberately stay untranslated.
-      label.textContent = provider.label || provider.key;
-      text.appendChild(label);
-      if (provider.coinCount === 0) {
-        const noData = document.createElement("span");
-        noData.className = "row-desc quota-ring-provider-no-data";
-        noData.textContent = t("quotaRingProviderNoData");
-        text.appendChild(noData);
-      }
-      const control = document.createElement("div");
-      control.className = "row-control";
-      const switchControl = helpers.buildSwitch({
-        checked: isProviderChecked(provider),
-        ariaLabel: provider.label || provider.key,
-      });
-      controls.set(provider.key, switchControl);
-      control.appendChild(switchControl.element);
-      row.append(text, control);
-      switchControl.setOnToggle(({ nextChecked: shown }) => {
-        const currentShownProviders = providers
-          .filter((entry) => entry.shown)
-          .map((entry) => entry.key);
-        const currentSelection = Array.isArray(selectedProviders)
-          ? selectedProviders : currentShownProviders;
-        const selected = currentSelection.filter((key) => key !== provider.key);
-        if (shown) selected.push(provider.key);
-        pendingChange = { key: provider.key, shown };
-        syncControls();
-        return Promise.resolve()
-          .then(() => window.settingsAPI.command("setQuotaRingProviderShown", {
-            key: provider.key,
-            shown,
-            currentShownProviders,
-          }))
-          .then((result) => {
-            if (!result || result.status !== "ok" || result.noop) {
-              if (result && result.noop) return;
-              ops.showToast(t("toastSaveFailed") + ((result && result.message) || "unknown error"), { error: true });
-              return;
-            }
-            // A push must not suppress the successful command's selection.
-            applyCommittedSelection(selected);
-          })
-          .catch((err) => ops.showToast(t("toastSaveFailed") + (err && err.message), { error: true }))
-          .finally(() => {
-            pendingChange = null;
-            syncControls();
-          });
-      });
-      return row;
-    }
-
-    function applyProviders(list) {
-      // Every notification supersedes the initial query, including an empty or
-      // identical list. This query fence never controls save completion.
-      queryGeneration += 1;
-      const next = Array.isArray(list)
-        ? list.filter((provider) => provider && typeof provider.key === "string") : [];
-      if (JSON.stringify(next) === JSON.stringify(providers)) return;
-      providers = next;
-      controls.clear();
-      element.innerHTML = "";
-      element.append(head, limit);
-      // One entry offers no alternatives; count absent selected entries too,
-      // so multiple stored choices remain reachable when their data disappears.
-      element.style.display = providers.length > 1 ? "" : "none";
-      if (providers.length > 1) {
-        for (const provider of providers) element.appendChild(buildProviderRow(provider));
-        syncControls();
-      }
-    }
-
-    function load() {
-      const api = window.settingsAPI;
-      if (!api || typeof api.getQuotaRingProviders !== "function") return;
-      const startedAt = queryGeneration;
-      Promise.resolve(api.getQuotaRingProviders())
-        .then((list) => {
-          // A live notification can overtake the initial query.
-          if (queryGeneration === startedAt) applyProviders(list);
-        })
-        .catch(() => {});
-    }
-    return { element, load, applyProviders };
-  }
-
-  function applyQuotaRingProviders(providers) {
-    if (quotaProvidersBlock && document.body.contains(quotaProvidersBlock.element)) {
-      quotaProvidersBlock.applyProviders(providers);
-    }
-  }
-
-  function buildQuotaRingDisplayModeRow() {
-    const row = document.createElement("div");
-    row.className = "row quota-ring-display-mode-row";
-
-    const text = document.createElement("div");
-    text.className = "row-text";
-    const label = document.createElement("span");
-    label.className = "row-label";
-    label.textContent = t("rowQuotaRingDisplayMode");
-    const desc = document.createElement("span");
-    desc.className = "row-desc";
-    desc.textContent = t("rowQuotaRingDisplayModeDesc");
-    text.append(label, desc);
-
-    const controlWrap = document.createElement("div");
-    controlWrap.className = "row-control";
-    const control = helpers.buildSegmentedRadio({
-      id: "quota-ring-display-mode",
-      value: state.snapshot && state.snapshot.quotaRingDisplayMode,
-      ariaLabel: t("rowQuotaRingDisplayMode"),
-      className: "quota-ring-display-mode-choice",
-      options: [
-        { value: "used", label: t("quotaRingDisplayUsed") },
-        { value: "remaining", label: t("quotaRingDisplayRemaining") },
-      ],
-      onChange: (next) => {
-        if (!window.settingsAPI || typeof window.settingsAPI.update !== "function") {
-          ops.showToast(t("toastSaveFailed") + "settings API unavailable", { error: true });
-          return false;
-        }
-        return Promise.resolve()
-          .then(() => window.settingsAPI.update("quotaRingDisplayMode", next))
-          .then((result) => {
-            if (result && result.status === "ok") return true;
-            ops.showToast(t("toastSaveFailed") + ((result && result.message) || "unknown error"), { error: true });
-            return false;
-          })
-          .catch((err) => {
-            ops.showToast(t("toastSaveFailed") + (err && err.message), { error: true });
-            return false;
-          });
-      },
-    });
-    controlWrap.appendChild(control.element);
-    row.append(text, controlWrap);
-    state.mountedControls.quotaRingDisplayMode = control;
-    return row;
   }
 
   function buildQuotaAlertThresholdsRow() {
@@ -711,12 +477,7 @@
       ...buildSessionHudOptionsList(hudEnabled),
     ]));
 
-    const quotaSection = helpers.buildSection(
-      t("sectionQuotaRing"),
-      buildQuotaRingGroup(),
-    );
-    quotaSection.classList.add("quota-ring-section");
-    parent.appendChild(quotaSection);
+    parent.appendChild(helpers.buildSection(t("sectionQuotaAlerts"), buildQuotaControls()));
 
     parent.appendChild(helpers.buildSection(t("sectionAdvanced"), [
       buildSessionCleanupGroup(),
@@ -731,10 +492,6 @@
       && !SESSION_HUD_CHILD_SWITCH_KEYS.every((key) => getMountedGeneralSwitch(key))) {
       return false;
     }
-    if (keys.includes("quotaRingDisplayMode")) {
-      const control = state.mountedControls.quotaRingDisplayMode;
-      if (!control || !document.body.contains(control.element)) return false;
-    }
     if (keys.includes("quotaAlertThresholds") || keys.includes("quotaAlertsEnabled")) {
       const control = state.mountedControls.quotaAlertThresholds;
       if (!control || !document.body.contains(control.row)) return false;
@@ -747,7 +504,6 @@
       }
     }
     for (const key of keys) {
-      if (key === "quotaRingDisplayMode") continue;
       if (key === "quotaAlertThresholds") continue;
       if (SESSION_CLEANUP_NUMBER_KEYS.has(key)) continue;
       const meta = state.mountedControls.generalSwitches.get(key);
@@ -755,12 +511,6 @@
     }
     for (const key of keys) {
       if (key === "quotaAlertThresholds") continue;
-      if (key === "quotaRingDisplayMode") {
-        state.mountedControls.quotaRingDisplayMode.setValue(
-          state.snapshot && state.snapshot.quotaRingDisplayMode
-        );
-        continue;
-      }
       if (SESSION_CLEANUP_NUMBER_KEYS.has(key)) {
         state.mountedControls.sessionCleanupControls.get(key).syncFromSnapshot();
         continue;
@@ -791,7 +541,6 @@
     core.tabs.sessions = {
       render,
       patchInPlace,
-      applyQuotaRingProviders,
     };
   }
 

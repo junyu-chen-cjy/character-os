@@ -205,27 +205,9 @@ const SCHEMA = {
   // Independent opt-in: active temporary side chats are also collapsed, without
   // changing execution, canonical sessions or pending-attention visibility.
   sessionHudHideActiveCodexEphemeral: { type: "boolean", default: false },
-  sessionHudShowQuota: { type: "boolean", default: true },
-  // Preserve the historical used-percentage presentation for existing users;
-  // remaining is a display-only choice and never changes stored quota data.
-  quotaRingDisplayMode: { type: "string", default: "used", enum: ["used", "remaining"] },
   quotaAlertsEnabled: { type: "boolean", default: false },
   quotaAlertThresholds: { type: "array", defaultFactory: () => [20, 10], normalize: normalizeQuotaAlertThresholds },
   quotaRecoveryAlertsEnabled: { type: "boolean", default: true },
-  // Once the user chooses, only those providers appear: a newly connected
-  // provider must not silently replace a vacancy in their explicit selection.
-  quotaRingShownProviders: {
-    type: "array",
-    default: null,
-    normalize: normalizeQuotaRingShownProviders,
-  },
-  // Legacy exclusions still apply in automatic mode, so existing users keep
-  // their hidden choices without a migration. Manual selections ignore these.
-  quotaRingHiddenProviders: {
-    type: "array",
-    defaultFactory: () => [],
-    normalize: normalizeQuotaRingHiddenProviders,
-  },
   // Claude Code exposes the reported context window and subscription limits
   // through its visible, single-slot statusline. The historical key name is
   // retained for compatibility, but it authorizes the whole local Claude
@@ -1096,40 +1078,6 @@ const CODEX_PERMISSION_MODES = ["auto", "intercept"];
 const MAX_CUSTOM_DISCOVERY_PATHS = 64;
 const MAX_CUSTOM_DISCOVERY_PATH_LENGTH = 2048;
 
-// Provider keys the user hid from the pet-side quota cluster. Display-only:
-// collection keeps running and the Dashboard keeps every provider. These
-// exclusions are only consulted while the shown-provider selection is null.
-//
-// Unknown keys are kept, not dropped. The authoritative provider list lives in
-// quota-ring-geometry.js, and validating against it here would mean prefs.js
-// silently discarding a user's choice whenever load order, a rename, or a
-// not-yet-registered provider makes a key look unfamiliar — a hidden provider
-// would then reappear on its own. Consumers match by key, so a stale entry
-// costs nothing beyond a few bytes; the cap keeps that bounded.
-const MAX_HIDDEN_QUOTA_PROVIDERS = 32;
-function normalizeQuotaRingHiddenProviders(value) {
-  if (!Array.isArray(value)) return [];
-  const out = [];
-  const seen = new Set();
-  for (const entry of value) {
-    if (typeof entry !== "string") continue;
-    const trimmed = entry.replace(/\0/g, "").trim().slice(0, 64);
-    if (!trimmed || seen.has(trimmed)) continue;
-    seen.add(trimmed);
-    out.push(trimmed);
-    if (out.length >= MAX_HIDDEN_QUOTA_PROVIDERS) break;
-  }
-  return out;
-}
-
-function normalizeQuotaRingShownProviders(value) {
-  if (!Array.isArray(value)) return null;
-  // Reuse the key cleanup (including unknown-key preservation) without making
-  // storage depend on geometry. Keep 3 in sync with geometry.RING_MAX_COINS and
-  // the provider selection validation in settings-actions.js.
-  return normalizeQuotaRingHiddenProviders(value).slice(0, 3);
-}
-
 function normalizePathList(value, options = {}) {
   const raw = Array.isArray(value)
     ? value
@@ -1779,6 +1727,5 @@ module.exports = {
   normalizePathList,
   isValidSettingsWindowBounds,
   MAX_CUSTOM_DISCOVERY_PATHS,
-  MAX_HIDDEN_QUOTA_PROVIDERS,
   MAX_CUSTOM_DISCOVERY_PATH_LENGTH,
 };

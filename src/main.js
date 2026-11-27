@@ -1399,10 +1399,6 @@ let sessionHudEnabled = _settingsController.get("sessionHudEnabled");
 let sessionHudShowStateLabels = _settingsController.get("sessionHudShowStateLabels");
 let sessionHudShowElapsed = _settingsController.get("sessionHudShowElapsed");
 let sessionHudShowContextUsage = _settingsController.get("sessionHudShowContextUsage");
-let sessionHudShowQuota = _settingsController.get("sessionHudShowQuota");
-let quotaRingDisplayMode = _settingsController.get("quotaRingDisplayMode");
-let quotaRingShownProviders = _settingsController.get("quotaRingShownProviders");
-let quotaRingHiddenProviders = _settingsController.get("quotaRingHiddenProviders");
 let claudeQuotaCollectionEnabled = _settingsController.get("claudeQuotaCollectionEnabled");
 let deepseekBalanceCollectionEnabled = _settingsController.get("deepseekBalanceCollectionEnabled");
 let kimiQuotaCollectionEnabled = _settingsController.get("kimiQuotaCollectionEnabled");
@@ -1753,26 +1749,6 @@ function broadcastSettingsWindow(channel, payload) {
   } catch {}
 }
 
-let lastQuotaRingProvidersWindow = null;
-let lastQuotaRingProvidersSignature = null;
-function broadcastQuotaRingProviders(snapshot) {
-  const settingsWin = getSettingsWindow();
-  if (!settingsWin || settingsWin.isDestroyed()
-    || !settingsWin.webContents || settingsWin.webContents.isDestroyed()) {
-    lastQuotaRingProvidersWindow = null;
-    lastQuotaRingProvidersSignature = null;
-    return;
-  }
-  const providers = _ringGeom.listQuotaRingProviders(
-    snapshot, quotaRingHiddenProviders, quotaRingShownProviders
-  );
-  const signature = JSON.stringify(providers);
-  if (settingsWin === lastQuotaRingProvidersWindow
-    && signature === lastQuotaRingProvidersSignature) return;
-  broadcastSettingsWindow("settings:quota-ring-providers-changed", providers);
-  lastQuotaRingProvidersWindow = settingsWin;
-  lastQuotaRingProvidersSignature = signature;
-}
 
 let lastDeepseekBalanceStatusWindow = null;
 let lastDeepseekBalanceStatusSignature = null;
@@ -2023,13 +1999,11 @@ let forceEyeResend = false;
 let forceEyeResendBoostUntil = 0;
 let requestFastTick = () => {};
 let repositionSessionHud = () => {};
-let repositionQuotaRing = () => {};
 let syncSessionHudVisibility = () => {};
 let broadcastSessionHudSnapshot = () => {};
 let sendSessionHudI18n = () => {};
 let getSessionHudReservedOffset = () => 0;
 let getSessionHudWindow = () => null;
-let getQuotaRingWindow = () => null;
 
 function getVisibleSessionHudBounds() {
   try {
@@ -2124,7 +2098,6 @@ const topmostRuntime = createTopmostRuntime({
       : pendingPermissions.map((entry) => entry && entry.bubble).filter(Boolean)
   ),
   getSessionHudWindow: () => getSessionHudWindow(),
-  getQuotaRingWindow: () => getQuotaRingWindow(),
   getContextMenuOwner: () => contextMenuOwner,
   getNearestWorkArea,
   getPetWindowBounds,
@@ -2280,9 +2253,6 @@ const _permCtx = {
   reportShortcutFailure: (actionId, reason) => shortcutRuntime.reportFailure(actionId, reason),
   clearShortcutFailure: (actionId) => shortcutRuntime.clearFailure(actionId),
   repositionFloatingBubbles: () => repositionFloatingBubbles(),
-  // permission.js still calls this legacy-shaped callback after the update
-  // bubble has moved; only Orbit needs the second geometry pass here.
-  repositionSessionHud: () => repositionQuotaRing(),
   onPermissionResolved: (permEntry, options = {}) => {
     if (!_state || typeof _state.clearPermissionNotification !== "function") return;
     _state.clearPermissionNotification(permEntry && permEntry.sessionId, {
@@ -2366,7 +2336,6 @@ floatingWindowRuntime = createFloatingWindowRuntime({
   getPendingPermissions: () => pendingPermissions,
   repositionPermissionBubbles: () => repositionBubbles(),
   repositionSessionHud: () => repositionSessionHud(),
-  repositionQuotaRing: () => repositionQuotaRing(),
   syncSessionHudVisibility: () => syncSessionHudVisibility(),
   keepOutOfTaskbar,
   showPermissionSurfacesForPet: () => _perm.showPermissionSurfacesForPet(),
@@ -2521,7 +2490,6 @@ const _stateCtx = {
     reconcilePowerSaveBlocker();
     broadcastDashboardSessionSnapshot(snapshot);
     broadcastSessionHudSnapshot(snapshot);
-    broadcastQuotaRingProviders(snapshot);
     repositionFloatingBubbles();
     if (discordPresenceBridge) {
       try { discordPresenceBridge.onSnapshot(snapshot); } catch {}
@@ -3029,7 +2997,6 @@ app.on("before-quit", () => stopActivePermissionReviews());
 app.on("before-quit", () => _dashboard.quick.dispose());
 app.on("will-quit", () => _dashboard.quick.dispose());
 
-const _ringGeom = require("./quota-ring-geometry");
 const initPetHalo = require("./pet-halo");
 
 const _petHalo = initPetHalo({
@@ -3037,45 +3004,31 @@ const _petHalo = initPetHalo({
   get win() { return win; },
   get petHidden() { return petWindowRuntime.isPetEffectivelyHidden(); },
   get menuOpen() { return menuOpen; },
-  get sessionHudShowQuota() { return sessionHudShowQuota; },
-  get quotaRingDisplayMode() { return quotaRingDisplayMode; },
-  get quotaRingShownProviders() { return quotaRingShownProviders; },
-  get quotaRingHiddenProviders() { return quotaRingHiddenProviders; },
-  get sessionHudPinned() { return sessionHudPinned; },
   isDragLocked: () => petWindowRuntime.isDragLocked(),
   getMiniMode: () => _mini.getMiniMode(),
   getMiniTransitioning: () => _mini.getMiniTransitioning(),
   getSessionSnapshot: () => _state.buildSessionSnapshot(),
   getPendingPermissions: () => pendingPermissions,
   getAgentIconUrl: (agentId) => getAgentIconUrl(agentId),
-  getI18n: () => getDashboardI18nPayload(),
   getLang: () => lang,
   t: (key) => translate(key),
-  getDoNotDisturb: () => doNotDisturb,
-  enableDoNotDisturb: () => enableDoNotDisturb(),
-  disableDoNotDisturb: () => disableDoNotDisturb(),
-  setSessionHudPinned: (value) => _settingsController.applyUpdate("sessionHudPinned", !!value),
   openDashboard: (options) => showDashboard(options),
   openChat: () => chatWindow.open(),
-  openSettingsWindow: (options) => settingsWindowRuntime.open(options),
   getPetWindowBounds,
   getHitRectScreen,
   getSessionHudAnchorRect,
   getNearestWorkArea,
   getTextScale: () => getTextScaleForPetWindows(),
-  getPermissionBubbleBounds: () => _perm.getVisibleBubbleBounds(),
   guardAlwaysOnTop,
   reapplyMacVisibility,
   onReservedOffsetChange: () => repositionFloatingBubbles(),
 });
 repositionSessionHud = _petHalo.repositionSessionHud;
-repositionQuotaRing = _petHalo.repositionQuotaRing;
 syncSessionHudVisibility = _petHalo.syncSessionHud;
 broadcastSessionHudSnapshot = _petHalo.broadcastSessionSnapshot;
 sendSessionHudI18n = _petHalo.sendI18n;
 getSessionHudReservedOffset = _petHalo.getHudReservedOffset;
 getSessionHudWindow = _petHalo.getWindow;
-getQuotaRingWindow = _petHalo.getQuotaRingWindow;
 
 
 
@@ -4865,11 +4818,6 @@ const SETTINGS_MIRROR_SETTERS = {
   sessionHudShowStateLabels: (v) => { sessionHudShowStateLabels = v; },
   sessionHudShowElapsed: (v) => { sessionHudShowElapsed = v; },
   sessionHudShowContextUsage: (v) => { sessionHudShowContextUsage = v; },
-  sessionHudShowQuota: (v) => { sessionHudShowQuota = v; },
-  quotaRingDisplayMode: (v) => { quotaRingDisplayMode = v; },
-  // Preserve null as automatic mode when mirroring settings broadcasts.
-  quotaRingShownProviders: (v) => { quotaRingShownProviders = Array.isArray(v) ? v : null; },
-  quotaRingHiddenProviders: (v) => { quotaRingHiddenProviders = Array.isArray(v) ? v : []; },
   claudeQuotaCollectionEnabled: (v) => { claudeQuotaCollectionEnabled = v; },
   deepseekBalanceCollectionEnabled: (v) => { deepseekBalanceCollectionEnabled = v; },
   kimiQuotaCollectionEnabled: (v) => { kimiQuotaCollectionEnabled = v; },
@@ -5094,11 +5042,6 @@ const settingsIpcRuntime = registerSettingsIpc({
   path,
   settingsController: _settingsController,
   getQuotaSourceCount: () => _state.getQuotaSourceCount(),
-  getQuotaRingProviders: () => _ringGeom.listQuotaRingProviders(
-    _state.buildSessionSnapshot(),
-    quotaRingHiddenProviders,
-    quotaRingShownProviders
-  ),
   themeLoader,
   codexPetMain,
   officialThemeMain,

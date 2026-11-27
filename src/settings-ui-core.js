@@ -101,7 +101,6 @@
       segmentedRadios: new Set(),
       formFields: new Set(),
       disposableScopes: new Map(),
-      quotaRingDisplayMode: null,
       permissionAutomationMode: null,
       aboutUpdateStatus: null,
     },
@@ -2202,7 +2201,6 @@
     state.mountedControls.idleBehavior = null;
     state.mountedControls.idleActivityFrequency = null;
     state.mountedControls.bubblePlacement = null;
-    state.mountedControls.quotaRingDisplayMode = null;
     state.mountedControls.quotaAlertThresholds = null;
     state.mountedControls.permissionAutomationMode = null;
     state.mountedControls.roamArea = null;

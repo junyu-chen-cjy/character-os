@@ -549,8 +549,6 @@ function render() {
   updateUnread(sessions);
   hudEl.replaceChildren();
   hudEl.classList.add("has-pin");
-  // The HUD shows sessions only; account quota now lives in the pet-attached
-  // quota ring window (quota-ring.html).
   if (!sessions.length) return;
 
   const now = Date.now();
