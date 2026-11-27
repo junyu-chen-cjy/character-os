@@ -5,16 +5,19 @@
   // and en reads "resets in 4h 19m" instead of a glued translation.
   const STRINGS = {
     en: {
+      stale: "Stale",
       workspace: "Workspace", noData: "No data", left: "{pct}", win5h: "5h", win7d: "Weekly",
       resetsIn: "resets in {t}", resetsOn: "resets {d}", dH: "{h}h", dHM: "{h}h {m}m", dM: "{m}m",
       read: "Read {t}", updated: "Updated {t}", justNow: "just now", mAgo: "{n}m ago", hAgo: "{n}h ago",
     },
     zh: {
+      stale: "已过期",
       workspace: "工作台", noData: "暂无数据", left: "{pct}", win5h: "5 小时", win7d: "每周",
       resetsIn: "{t}后重置", resetsOn: "{d}重置", dH: "{h} 小时", dHM: "{h} 小时 {m} 分", dM: "{m} 分钟",
       read: "读取于 {t}", updated: "更新于 {t}", justNow: "刚刚", mAgo: "{n} 分钟前", hAgo: "{n} 小时前",
     },
     "zh-TW": {
+      stale: "已過期",
       workspace: "工作台", noData: "暫無資料", left: "{pct}", win5h: "5 小時", win7d: "每週",
       resetsIn: "{t}後重置", resetsOn: "{d}重置", dH: "{h} 小時", dHM: "{h} 小時 {m} 分", dM: "{m} 分鐘",
       read: "讀取於 {t}", updated: "更新於 {t}", justNow: "剛剛", mAgo: "{n} 分鐘前", hAgo: "{n} 小時前",
@@ -30,13 +33,6 @@
       read: "{t} 읽음", updated: "{t} 업데이트", justNow: "방금", mAgo: "{n}분 전", hAgo: "{n}시간 전",
     },
   };
-
-  const WARN_USED = 60;
-  const HOT_USED = 85;
-  // Antigravity is read on demand from the Gemini app, Codex streams in on its
-  // own; each gets a different threshold before its age is called out.
-  const AGE_SHOWN_AFTER_MS = { codex: 20 * 60000, antigravity: 0 };
-  const AGE_STALE_AFTER_MS = { codex: 60 * 60000, antigravity: 60 * 60000 };
 
   const shellEl = document.getElementById("haloShell");
   const quotaPanelEl = document.getElementById("quotaPanel");
@@ -106,64 +102,20 @@
     }
   }
 
-  function normalizeBucket(group, field, fallbackWin, now, discardExpired = false) {
-    const raw = group && group[field];
-    if (!raw || typeof raw !== "object") return null;
-    const expired = raw.expired === true || (Number.isFinite(raw.resetAt) && raw.resetAt <= now);
-    if (expired && discardExpired) return null;
-    const used = expired ? 0 : Math.max(0, Math.min(100, Number(raw.usedPercent) || 0));
-    return {
-      used,
-      remaining: Math.max(0, Math.min(100, Math.round(100 - used))),
-      lastSeenAt: Number(raw.lastSeenAt) || 0,
-      windowKey: fallbackWin === "7d" ? "win7d" : "win5h",
-      resetLabel: expired ? "" : formatReset(raw.resetAt, raw.windowMinutes),
-    };
-  }
-
-  function pickMostPressured(candidates) {
-    const valid = candidates.filter(Boolean);
-    if (!valid.length) return null;
-    return valid.reduce((best, cur) => (cur.used > best.used ? cur : best), valid[0]);
-  }
-
   function resolvePrimaryQuotas(now) {
-    const sources = Array.isArray(state.accountQuota) ? state.accountQuota : [];
     const icons = state.quotaAgentIcons || {};
-    let codexBest = null;
-    let agyBest = null;
-    for (const src of sources) {
-      if (!src || typeof src !== "object") continue;
-      if (src.codexQuota && src.codexQuota.group) {
-        const g = src.codexQuota.group;
-        const shortB = normalizeBucket(g, "codexFiveHour", "5h", now);
-        const longB = normalizeBucket(g, "codexWeekly", "7d", now);
-        const chosen = (longB && longB.used >= WARN_USED && (!shortB || longB.used > shortB.used))
-          ? longB
-          : (shortB || longB);
-        if (chosen && (!codexBest || chosen.used > codexBest.used)) codexBest = chosen;
-      }
-      if (src.antigravityQuota && src.antigravityQuota.group) {
-        const g = src.antigravityQuota.group;
-        const chosen = pickMostPressured([
-          normalizeBucket(g, "geminiFiveHour", "5h", now, true),
-          normalizeBucket(g, "geminiWeekly", "7d", now, true),
-          normalizeBucket(g, "thirdPartyFiveHour", "5h", now, true),
-          normalizeBucket(g, "thirdPartyWeekly", "7d", now, true),
-        ]);
-        if (chosen && (!agyBest || chosen.used > agyBest.used)) agyBest = chosen;
-      }
-    }
+    const view = globalThis.CharacterQuotaView;
     return [
-      { id: "codex", name: "Codex", iconUrl: icons.codexQuota || "", bucket: codexBest },
-      { id: "antigravity", name: "Antigravity", iconUrl: icons.antigravityQuota || "", bucket: agyBest },
+      { id: "codex", name: "Codex", iconUrl: icons.codexQuota || "", bucket: view.primaryWindow(state.accountQuota, "codexQuota", now) },
+      { id: "antigravity", name: "Antigravity", iconUrl: icons.antigravityQuota || "", bucket: view.primaryWindow(state.accountQuota, "antigravityQuota", now) },
     ];
   }
 
-  function severityForUsed(used) {
-    if (used > HOT_USED) return "bad";
-    if (used >= WARN_USED) return "warn";
-    return "";
+  function windowLabel(minutes) {
+    if (minutes === 300) return t("win5h");
+    if (minutes === 10080) return t("win7d");
+    if (minutes % 1440 === 0) return (minutes / 1440) + "d";
+    return minutes % 60 === 0 ? (minutes / 60) + "h" : minutes + "m";
   }
 
   function el(tag, className, text) {
@@ -201,7 +153,8 @@
   function renderQuotaSection() {
     const now = Date.now();
     const rows = resolvePrimaryQuotas(now).map((item) => {
-      const sev = item.bucket ? severityForUsed(item.bucket.used) : "";
+      const severity = globalThis.CharacterQuotaView.severity(item.bucket?.usedPercent);
+      const sev = !item.bucket?.stale && severity !== "ok" ? (severity === "hot" ? "bad" : "warn") : "";
       const row = el("div", `q${sev ? ` ${sev}` : ""}`);
       const head = el("div", "q-head");
       if (item.iconUrl) {
@@ -223,22 +176,25 @@
       val.appendChild(el("small", "", "%"));
       head.appendChild(val);
       row.appendChild(head);
+      if (item.bucket.source) row.title = item.bucket.source;
 
       const meter = el("div", `ui-meter${sev ? ` ${sev}` : ""}`);
       const fill = document.createElement("i");
       fill.style.width = `${item.bucket.remaining}%`;
       meter.appendChild(fill);
-      row.appendChild(meter);
+      if (!item.bucket.stale) row.appendChild(meter);
 
       const meta = el("div", "q-meta");
-      const left = [t(item.bucket.windowKey), item.bucket.resetLabel].filter(Boolean).join(" · ");
+      const reset = item.bucket.expired ? "" : formatReset(item.bucket.resetAt, item.bucket.windowMinutes);
+      const group = item.bucket.modelGroup === "thirdParty" ? "Claude / GPT" : item.bucket.modelGroup === "gemini" ? "Gemini" : "";
+      const left = [group, windowLabel(item.bucket.windowMinutes), reset].filter(Boolean).join(" · ");
       meta.appendChild(el("span", "", left));
       const seen = item.bucket.lastSeenAt;
-      if (seen && now - seen >= (AGE_SHOWN_AFTER_MS[item.id] || 0)) {
-        const age = t(item.id === "antigravity" ? "read" : "updated", { t: formatAge(seen, now) });
+      if (item.bucket.stale || (seen && item.id === "antigravity")) {
+        const age = [item.bucket.stale ? t("stale") : "", seen ? t("updated", { t: formatAge(seen, now) }) : ""].filter(Boolean).join(" · ");
         const ageEl = el("span", "q-age", age);
-        if (now - seen >= AGE_STALE_AFTER_MS[item.id]) ageEl.classList.add("stale");
-        ageEl.title = new Date(seen).toLocaleString();
+        if (item.bucket.stale) ageEl.classList.add("stale");
+        if (seen) ageEl.title = new Date(seen).toLocaleString();
         meta.appendChild(ageEl);
       }
       row.appendChild(meta);

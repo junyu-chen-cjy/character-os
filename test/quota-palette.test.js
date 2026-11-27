@@ -11,9 +11,10 @@ function read(name) {
 
 test("workbench quota bars use Graphite severity tokens", () => {
   const css = read("dashboard.css");
-  const renderer = read("dashboard-renderer.js");
   assert.match(css, /\.quota-bar-fill\.sev-warn\s*\{[^}]*var\(--warn\)/);
   assert.match(css, /\.quota-bar-fill\.sev-hot\s*\{[^}]*var\(--bad\)/);
-  assert.match(renderer, /QUOTA_WARN_AT = 60/);
-  assert.match(renderer, /QUOTA_HOT_AT = 85/);
+  const { severity } = require("../src/quota-view-model");
+  assert.equal(severity(59), "ok");
+  assert.equal(severity(60), "warn");
+  assert.equal(severity(86), "hot");
 });

@@ -27,7 +27,8 @@ test("DeepSeek Dashboard reuses one quota bar with amount, remaining width, base
   });
   const source = fs.readFileSync(path.join(__dirname, "..", "src", "dashboard-renderer.js"), "utf8");
   vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "src", "quota-balance.js"), "utf8"), context);
-  vm.runInContext(source.slice(source.indexOf("const QUOTA_WARN_AT"), source.indexOf("function badgeLabel")), context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "src", "quota-view-model.js"), "utf8"), context);
+  vm.runInContext(source.slice(source.indexOf("function quotaSeverityClass"), source.indexOf("function badgeLabel")), context);
   const quota = [{ deepseekQuota: { lastSeenAt: time, group: { deepseekBalance: {
     amount: 45.2, baseline: 100, currency: "CNY", usedPercent: 55,
   } } } }];

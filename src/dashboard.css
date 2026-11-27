@@ -224,7 +224,9 @@ html:not([data-platform="mac"]) .top { padding-top: 0; height: 52px; }
 .overview-quota-val { font-size: var(--fs-md); font-weight: 620; font-variant-numeric: tabular-nums; }
 .overview-quota-val.is-empty { font-weight: 400; color: var(--text-3); }
 .overview-quota-bar { height: 3px; border-radius: 999px; background: var(--meter-track); overflow: hidden; }
-.overview-quota-fill { height: 100%; border-radius: inherit; transition: width 240ms var(--ease); }
+.overview-quota-fill { height: 100%; border-radius: inherit; background: var(--meter); transition: width 240ms var(--ease); }
+.overview-quota-fill.sev-warn { background: var(--warn); }
+.overview-quota-fill.sev-hot { background: var(--bad); }
 .overview-quota-sub { display: flex; justify-content: space-between; gap: 10px; font-size: var(--fs-xs); color: var(--text-3); font-variant-numeric: tabular-nums; }
 
 /* ── empty ── */
@@ -256,8 +258,6 @@ html:not([data-platform="mac"]) .top { padding-top: 0; height: 52px; }
 .quota-bar-fill.sev-warn { background: var(--warn); }
 .quota-bar-fill.sev-hot { background: var(--bad); }
 .quota-refresh-button { height: 24px; }
-.quota-row-inline-empty { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-radius: var(--r-lg); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); font-size: var(--fs-sm); }
-.quota-row-inline-empty span { color: var(--text-3); }
 
 .runtime-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; font-size: var(--fs-sm); }
 .runtime-left { display: inline-flex; align-items: center; gap: 8px; min-width: 0; font-weight: 520; }

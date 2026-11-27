@@ -55,7 +55,9 @@ const wsGeminiQuotaStatus = document.getElementById("wsGeminiQuotaStatus");
 let geminiQuotaStatus = "quotaReadInstructions";
 let readingGeminiQuota = false;
 const wsQuotaTitleEl = document.getElementById("wsQuotaTitle");
-const wsQuotaMissingRowsEl = document.getElementById("wsQuotaMissingRows");
+const wsGeminiChatControls = document.getElementById("wsGeminiChatControls");
+const wsGeminiChatStatus = document.getElementById("wsGeminiChatStatus");
+const wsOpenGeminiUsage = document.getElementById("wsOpenGeminiUsage");
 const wsQuotaFallbackEl = document.getElementById("wsQuotaFallback");
 const wsRuntimeTitleEl = document.getElementById("wsRuntimeTitle");
 const wsBtnManageAgentsEl = document.getElementById("wsBtnManageAgents");
@@ -68,9 +70,18 @@ let lastWorkspaceRailSig = "";
 
 const WS_STRINGS = {
   en: {
-    quotaReadGemini: "Read Gemini Antigravity quota",
+    quotaReadGemini: "Read Antigravity quota now",
     quotaReadInstructions: "In Gemini Antigravity, reopen the model picker → View Usage and wait for it to refresh.",
     quotaReadOk: "Antigravity quota read from Gemini.",
+    quotaAutoReady: "Antigravity syncs automatically while Gemini’s View Usage panel is open.",
+    quotaAutoUnavailable: "Waiting for Gemini in Antigravity mode.",
+    quotaUnchanged: "The open panel has the same reading.",
+    quotaStale: "Stale",
+    quotaPendingReset: "Reset not yet confirmed",
+    geminiChat: "Gemini Chat",
+    geminiChatUsage: "Open Gemini Usage Limits",
+    geminiChatWaiting: "Gemini Chat syncs while its Usage Limits page is selected in Chrome.",
+    geminiChatWatching: "Gemini Chat is syncing from the official Usage Limits page.",
     quotaReadAt: "Read {time}",
     quotaPermission: "Grant Character OS access in macOS Privacy & Security → Accessibility.",
     quotaOpenGemini: "Open Gemini App in Antigravity mode first.",
@@ -115,9 +126,18 @@ const WS_STRINGS = {
     projectsMore: "All projects",
   },
   zh: {
-    quotaReadGemini: "读取 Gemini Antigravity 额度",
+    quotaReadGemini: "立即读取 Antigravity 额度",
     quotaReadInstructions: "请在 Gemini 的 Antigravity 模型菜单重新打开 View Usage，等刷新完成后读取。",
     quotaReadOk: "已从 Gemini 读取 Antigravity 额度。",
+    quotaAutoReady: "Gemini 的 View Usage 面板打开时，Antigravity 额度会自动同步。",
+    quotaAutoUnavailable: "等待 Gemini 打开 Antigravity。",
+    quotaUnchanged: "面板中的读数未变化。",
+    quotaStale: "已过期",
+    quotaPendingReset: "尚未确认重置",
+    geminiChat: "Gemini 日常聊天",
+    geminiChatUsage: "打开 Gemini 用量页",
+    geminiChatWaiting: "Chrome 中选中 Gemini 用量限额页时自动同步聊天额度。",
+    geminiChatWatching: "Gemini 聊天额度已从官方用量限额页同步。",
     quotaReadAt: "读取于 {time}",
     quotaPermission: "请在 macOS「隐私与安全性 → 辅助功能」中授权 Character OS。",
     quotaOpenGemini: "请先打开 Gemini App 并进入 Antigravity。",
@@ -762,19 +782,8 @@ function contextUsageText(session) {
 // a source only. Provider sections cover Antigravity's own /usage (Gemini +
 // Claude/GPT-via-agy), Claude Code's rate_limits, Codex's generic rollout
 // rate_limits, and Dashboard-only Codex Spark quota.
-// Severity thresholds: a bar
-// and a ring must agree on what counts as warn (60) and hot (85), otherwise
-// the same bucket reads as alarming in one surface and fine in the other.
-// test/quota-palette.test.js pins the mirror.
-const QUOTA_WARN_AT = 60;
-const QUOTA_HOT_AT = 85;
-
 function quotaSeverityClass(usedPercent) {
-  const p = Number(usedPercent);
-  if (!Number.isFinite(p)) return "sev-ok";
-  if (p > QUOTA_HOT_AT) return "sev-hot";
-  if (p >= QUOTA_WARN_AT) return "sev-warn";
-  return "sev-ok";
+  return "sev-" + globalThis.CharacterQuotaView.severity(usedPercent);
 }
 // A source that has not confirmed its numbers recently gets an explicit
 // "as of N ago" label instead of presenting old numbers as live.
@@ -942,19 +951,8 @@ function formatAsOf(updatedAt) {
 // than showing nothing. The store already drops expired buckets at snapshot
 // time; this guard covers buckets that expire between snapshots (the
 // dashboard rerenders on its own tick).
-function isExpiredBucket(bucket) {
-  return Number.isFinite(bucket.resetAt) && bucket.resetAt <= Date.now();
-}
-
-function liveBucket(group, field, discardExpired = false) {
-  const bucket = group && group[field];
-  if (!bucket || typeof bucket !== "object") return null;
-  // Preserve the other providers' existing reset display. Antigravity rows
-  // need a fresh observation before showing any post-reset balance.
-  if (bucket.expired === true || isExpiredBucket(bucket)) {
-    return discardExpired ? null : { ...bucket, usedPercent: 0, expired: true };
-  }
-  return bucket;
+function liveBucket(group, field, providerKey) {
+  return globalThis.CharacterQuotaView.describeWindow(group?.[field], providerKey, Date.now());
 }
 
 function formatQuotaWindowLabel(bucket, fallbackLabel) {
@@ -983,7 +981,7 @@ function formatResetDate(resetAt) {
   const lang = (i18nPayload && i18nPayload.lang) || "en";
   try {
     if (!resetDateFormatter || resetDateFormatterLang !== lang) {
-      resetDateFormatter = new Intl.DateTimeFormat(lang, { month: "short", day: "numeric" });
+      resetDateFormatter = new Intl.DateTimeFormat(lang, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
       resetDateFormatterLang = lang;
     }
     return resetDateFormatter.format(n);
@@ -1003,7 +1001,7 @@ function buildQuotaSourceHeader(sourceEntry, providerEntry, baseLabel, providerK
   // currently reporting source. A lone default source stays compact.
   const namedLocalCodex = typeof sourceEntry.sourceKey === "string"
     && sourceEntry.sourceKey.startsWith("codex-profile:");
-  if (multiSource || namedLocalCodex || sourceEntry.sourceKey === "gemini-app-antigravity") {
+  if (multiSource || namedLocalCodex || providerKey === "geminiChatQuota" || sourceEntry.sourceKey === "gemini-app-antigravity") {
     let localLabel = t("dashboardQuotaSourceLocal");
     if (sourceEntry.hasExtraCodexProfile) {
       if (providerKey === "codexQuota") localLabel = t("dashboardQuotaSectionCodex");
@@ -1017,7 +1015,7 @@ function buildQuotaSourceHeader(sourceEntry, providerEntry, baseLabel, providerK
   // Fallback covers snapshots that predate lastSeenAt.
   const seenAt = Number(providerEntry.lastSeenAt ?? providerEntry.updatedAt ?? 0);
   const age = Date.now() - seenAt;
-  if (providerKey === "antigravityQuota" && Number.isFinite(seenAt) && seenAt > 0) {
+  if (Number.isFinite(seenAt) && seenAt > 0 && (providerKey === "antigravityQuota" || providerKey === "geminiChatQuota" || providerKey.startsWith("codex"))) {
     parts.push(wt("quotaReadAt").replace("{time}", new Date(seenAt).toLocaleString(i18nPayload?.lang)));
   } else if (Number.isFinite(age) && age > quotaStaleAfterMs(providerKey)) {
     const asOf = formatAsOf(seenAt);
@@ -1039,7 +1037,7 @@ function buildQuotaHalfBar(labelText, bucket, resetStyle, providerKey, ringSlot,
   labelRow.className = "quota-label-row";
   labelRow.appendChild(createText("span", "quota-label", labelText));
   const isBalance = presentation.kind === "balance";
-  const remainingPercent = Math.max(0, Math.min(100, Math.round(100 - (Number(bucket.usedPercent) || 0))));
+  const remainingPercent = bucket.remaining;
   const remainingWord = t("quotaRemainingWord") !== "quotaRemainingWord"
     ? t("quotaRemainingWord")
     : "left";
@@ -1047,31 +1045,31 @@ function buildQuotaHalfBar(labelText, bucket, resetStyle, providerKey, ringSlot,
     ? t("dashboardDeepseekBalanceBaseline").replace("{amount}", formatBalanceAmount(bucket.baseline, bucket.currency))
     : `${remainingPercent}% ${remainingWord}`;
   let resetText = "";
-  if (Number.isFinite(bucket.resetAt)) {
+  if (bucket.expired) {
+    resetText = wt("quotaPendingReset");
+  } else if (Number.isFinite(bucket.resetAt)) {
     resetText = resetStyle === "date"
       ? t("dashboardQuotaResetOn").replace("{date}", formatResetDate(bucket.resetAt))
       : t("dashboardQuotaResetIn").replace("{time}", formatResetIn(bucket.resetAt));
   }
   const bucketSeenAt = Number(bucket.lastSeenAt);
-  const asOf = Number.isFinite(bucketSeenAt)
+  const showsSourceTime = providerKey === "antigravityQuota" || providerKey === "geminiChatQuota" || providerKey.startsWith("codex");
+  const asOf = !showsSourceTime && Number.isFinite(bucketSeenAt)
     && Date.now() - bucketSeenAt > quotaStaleAfterMs(providerKey)
     ? formatAsOf(bucketSeenAt)
     : "";
-  const details = [percentText, resetText, asOf].filter(Boolean).join(" · ");
+  const details = [percentText, bucket.stale ? wt("quotaStale") : "", resetText, asOf].filter(Boolean).join(" · ");
   labelRow.appendChild(createText("span", "quota-percent", details));
   half.appendChild(labelRow);
 
   const track = document.createElement("div");
   track.className = "quota-bar-track";
   const fill = document.createElement("div");
-  // Identity classes (pv-/rg-) paint the bar in the provider+window hue the
-  // Orbit coin uses for the same logical window; the sev- class overrides it
-  // on warning/hot, again exactly like the coin's fill.
   fill.className = `quota-bar-fill pv-${providerKey} rg-${ringSlot} ${quotaSeverityClass(bucket.usedPercent)}`;
   const percent = isBalance ? 100 - bucket.usedPercent : remainingPercent;
   fill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
   track.appendChild(fill);
-  half.appendChild(track);
+  if (!bucket.stale) half.appendChild(track);
 
   return half;
 }
@@ -1110,7 +1108,7 @@ function buildQuotaGroupRow(headerText, fiveHourBucket, weeklyBucket, providerKe
   return row;
 }
 
-function buildQuotaSection(headerKey, rows, headerExtras = []) {
+function buildQuotaSection(headerKey, rows, headerExtras = [], title = t(headerKey)) {
   const usableRows = rows.filter(Boolean);
   if (!usableRows.length && !headerExtras.length) return null;
   const section = document.createElement("div");
@@ -1118,11 +1116,11 @@ function buildQuotaSection(headerKey, rows, headerExtras = []) {
   if (headerExtras.length) {
     const titlebar = document.createElement("div");
     titlebar.className = "quota-section-titlebar";
-    titlebar.appendChild(createText("div", "quota-section-header", t(headerKey)));
+    titlebar.appendChild(createText("div", "quota-section-header", title));
     for (const el of headerExtras) titlebar.appendChild(el);
     section.appendChild(titlebar);
   } else {
-    section.appendChild(createText("div", "quota-section-header", t(headerKey)));
+    section.appendChild(createText("div", "quota-section-header", title));
   }
   for (const row of usableRows) section.appendChild(row);
   return section;
@@ -1174,14 +1172,14 @@ function renderQuotaSummary(snapshot) {
     antigravityRows.push(
       buildQuotaGroupRow(
         buildQuotaSourceHeader(source, provider, t("dashboardQuotaGroupGemini"), "antigravityQuota"),
-        liveBucket(group, "geminiFiveHour", true),
-        liveBucket(group, "geminiWeekly", true),
+        liveBucket(group, "geminiFiveHour", "antigravityQuota"),
+        liveBucket(group, "geminiWeekly", "antigravityQuota"),
         "antigravityQuota"
       ),
       buildQuotaGroupRow(
         buildQuotaSourceHeader(source, provider, t("dashboardQuotaGroupThirdParty"), "antigravityQuota"),
-        liveBucket(group, "thirdPartyFiveHour", true),
-        liveBucket(group, "thirdPartyWeekly", true),
+        liveBucket(group, "thirdPartyFiveHour", "antigravityQuota"),
+        liveBucket(group, "thirdPartyWeekly", "antigravityQuota"),
         "antigravityQuota"
       )
     );
@@ -1195,8 +1193,8 @@ function renderQuotaSummary(snapshot) {
     if (!group) return null;
     return buildQuotaGroupRow(
       buildQuotaSourceHeader(source, provider, null, "claudeQuota"),
-      liveBucket(group, "claudeFiveHour"),
-      liveBucket(group, "claudeWeekly"),
+      liveBucket(group, "claudeFiveHour", "claudeQuota"),
+      liveBucket(group, "claudeWeekly", "claudeQuota"),
       "claudeQuota"
     );
   });
@@ -1209,13 +1207,25 @@ function renderQuotaSummary(snapshot) {
     if (!group) return null;
     return buildQuotaGroupRow(
       buildQuotaSourceHeader(source, provider, null, "codexQuota"),
-      liveBucket(group, "codexFiveHour"),
-      liveBucket(group, "codexWeekly"),
+      liveBucket(group, "codexFiveHour", "codexQuota"),
+      liveBucket(group, "codexWeekly", "codexQuota"),
       "codexQuota"
     );
   });
   const codexSection = buildQuotaSection("dashboardQuotaSectionCodex", codexRows);
   if (codexSection) sections.push(codexSection);
+
+  const geminiChatRows = sources.map(source => {
+    const provider = source.geminiChatQuota;
+    if (!provider?.group) return null;
+    return buildQuotaGroupRow(
+      buildQuotaSourceHeader(source, provider, null, "geminiChatQuota"),
+      liveBucket(provider.group, "geminiChatFiveHour", "geminiChatQuota"),
+      liveBucket(provider.group, "geminiChatWeekly", "geminiChatQuota"),
+      "geminiChatQuota"
+    );
+  });
+  if (geminiChatRows.some(Boolean)) sections.push(buildQuotaSection(null, geminiChatRows, [], wt("geminiChat")));
 
   const codexSparkRows = sources.map((source) => {
     const provider = source.codexSparkQuota;
@@ -1223,8 +1233,8 @@ function renderQuotaSummary(snapshot) {
     if (!group) return null;
     return buildQuotaGroupRow(
       buildQuotaSourceHeader(source, provider, null, "codexSparkQuota"),
-      liveBucket(group, "codexFiveHour"),
-      liveBucket(group, "codexWeekly"),
+      liveBucket(group, "codexFiveHour", "codexQuota"),
+      liveBucket(group, "codexWeekly", "codexQuota"),
       "codexSparkQuota"
     );
   });
@@ -1240,8 +1250,8 @@ function renderQuotaSummary(snapshot) {
     if (!group) return null;
     return buildQuotaGroupRow(
       buildQuotaSourceHeader(source, provider, null, "kimiQuota"),
-      liveBucket(group, "kimiFiveHour"),
-      liveBucket(group, "kimiWeekly"),
+      liveBucket(group, "kimiFiveHour", "kimiQuota"),
+      liveBucket(group, "kimiWeekly", "kimiQuota"),
       "kimiQuota"
     );
   });
@@ -2641,37 +2651,17 @@ function appendProjectsSection(fragment, sessions) {
   fragment.appendChild(section);
 }
 
-function summarizeProviderQuota(accountQuota, providerKey, fields, now) {
-  const sources = Array.isArray(accountQuota) ? accountQuota : [];
-  let best = null;
-  for (const src of sources) {
-    const provider = src && src[providerKey];
-    const group = provider && provider.group;
-    if (!group) continue;
-    for (const [field, fallbackWin] of fields) {
-      const raw = group[field];
-      if (!raw || typeof raw !== "object") continue;
-      const expired = raw.expired === true || (Number.isFinite(raw.resetAt) && raw.resetAt <= now);
-      if (expired && providerKey === "antigravityQuota") continue;
-      const used = expired ? 0 : Math.max(0, Math.min(100, Number(raw.usedPercent) || 0));
-      const remaining = Math.max(0, Math.min(100, Math.round(100 - used)));
-      const resetStyle = quotaResetStyle(raw, Number(raw.windowMinutes) >= 1440 ? "date" : "countdown");
-      const resetText = (!expired && Number.isFinite(raw.resetAt))
-        ? (resetStyle === "date"
-          ? t("dashboardQuotaResetOn").replace("{date}", formatResetDate(raw.resetAt))
-          : t("dashboardQuotaResetIn").replace("{time}", formatResetIn(raw.resetAt)))
-        : "";
-      const item = {
-        used,
-        remaining,
-        windowLabel: formatQuotaWindowLabel(raw, t(fallbackWin)),
-        resetText,
-        lastSeenAt: Number(raw.lastSeenAt) || 0,
-      };
-      if (!best || item.used > best.used) best = item;
-    }
+function summarizeProviderQuota(accountQuota, providerKey, now) {
+  const bucket = globalThis.CharacterQuotaView?.primaryWindow(accountQuota, providerKey, now);
+  if (!bucket) return null;
+  let resetText = "";
+  if (bucket.expired) resetText = wt("quotaPendingReset");
+  else if (Number.isFinite(bucket.resetAt)) {
+    resetText = quotaResetStyle(bucket, "countdown") === "date"
+      ? t("dashboardQuotaResetOn").replace("{date}", formatResetDate(bucket.resetAt))
+      : t("dashboardQuotaResetIn").replace("{time}", formatResetIn(bucket.resetAt));
   }
-  return best;
+  return { ...bucket, windowLabel: formatQuotaWindowLabel(bucket, ""), resetText };
 }
 
 let geminiStatusShown = false;
@@ -2689,6 +2679,7 @@ async function runGeminiRead() {
       "open-gemini": "quotaOpenGemini",
       "open-usage": "quotaReadInstructions",
       refreshing: "quotaRefreshing",
+      unchanged: "quotaUnchanged",
       unrecognized: "quotaUnrecognized",
       "try-later": "quotaTryLater",
     }[result?.status] || "quotaReadFailed";
@@ -2714,30 +2705,17 @@ function appendOverviewQuotasSection(fragment, now) {
       id: "codex",
       name: "Codex",
       iconUrl: icons.codexQuota || "",
-      summary: summarizeProviderQuota(
-        snapshot.accountQuota,
-        "codexQuota",
-        [["codexFiveHour", "dashboardQuotaFiveHour"], ["codexWeekly", "dashboardQuotaWeekly"]],
-        now
-      ),
+      summary: summarizeProviderQuota(snapshot.accountQuota, "codexQuota", now),
     },
     {
       id: "antigravity",
       name: "Antigravity",
       iconUrl: icons.antigravityQuota || "",
-      summary: summarizeProviderQuota(
-        snapshot.accountQuota,
-        "antigravityQuota",
-        [
-          ["geminiFiveHour", "dashboardQuotaFiveHour"],
-          ["geminiWeekly", "dashboardQuotaWeekly"],
-          ["thirdPartyFiveHour", "dashboardQuotaFiveHour"],
-          ["thirdPartyWeekly", "dashboardQuotaWeekly"],
-        ],
-        now
-      ),
+      summary: summarizeProviderQuota(snapshot.accountQuota, "antigravityQuota", now),
     },
   ];
+  const geminiChat = summarizeProviderQuota(snapshot.accountQuota, "geminiChatQuota", now);
+  if (geminiChat) providers.push({ id: "geminiChat", name: wt("geminiChat"), summary: geminiChat });
   const canReadGemini = workspaceCtx?.system?.platform === "darwin";
 
   for (const item of providers) {
@@ -2774,18 +2752,14 @@ function appendOverviewQuotasSection(fragment, now) {
       const fill = document.createElement("div");
       fill.className = "overview-quota-fill";
       fill.style.width = `${item.summary.remaining}%`;
-      fill.style.background = item.summary.used > QUOTA_HOT_AT
-        ? "var(--bad)"
-        : item.summary.used >= QUOTA_WARN_AT
-          ? "var(--warn)"
-          : "var(--meter)";
+      fill.classList.add("sev-" + globalThis.CharacterQuotaView.severity(item.summary.usedPercent));
       bar.appendChild(fill);
-      card.appendChild(bar);
+      if (!item.summary.stale) card.appendChild(bar);
 
       const sub = document.createElement("div");
       sub.className = "overview-quota-sub";
       sub.append(
-        createText("span", "", [item.summary.windowLabel, item.summary.resetText].filter(Boolean).join(" · ")),
+        createText("span", "", [item.summary.modelGroup === "thirdParty" ? "Claude / GPT" : item.summary.modelGroup === "gemini" ? "Gemini" : "", item.summary.windowLabel, item.summary.stale ? wt("quotaStale") : "", item.summary.resetText].filter(Boolean).join(" · ")),
         createText(
           "span",
           "",
@@ -2926,29 +2900,19 @@ function renderWorkspaceChrome(sessions) {
   }
   if (wsGeminiQuotaStatus) {
     wsGeminiQuotaStatus.hidden = !canReadGemini;
-    wsGeminiQuotaStatus.textContent = wt(geminiQuotaStatus);
+    const autoStatus = workspaceCtx?.system?.antigravityQuotaStatus;
+    const automatic = { "permission-required": "quotaPermission", "open-gemini": "quotaAutoUnavailable" };
+    wsGeminiQuotaStatus.textContent = wt(geminiStatusShown ? geminiQuotaStatus : automatic[autoStatus] || "quotaAutoReady");
   }
   if (wsRuntimeTitleEl) wsRuntimeTitleEl.textContent = wt("runtimeTitle");
   if (wsBtnManageAgentsEl) wsBtnManageAgentsEl.textContent = wt("manageAgents");
 
-  const sources = Array.isArray(snapshot && snapshot.accountQuota) ? snapshot.accountQuota : [];
-  const hasCodexQuota = sources.some((s) => s && s.codexQuota && s.codexQuota.group);
-  const hasAgyQuota = sources.some((s) => s && s.antigravityQuota && s.antigravityQuota.group);
-
-  if (wsQuotaMissingRowsEl) {
-    wsQuotaMissingRowsEl.replaceChildren();
-    if (!hasCodexQuota && hasAgyQuota) {
-      const row = document.createElement("div");
-      row.className = "quota-row-inline-empty";
-      row.append(createText("strong", "", "Codex"), createText("span", "", wt("quotaNoData")));
-      wsQuotaMissingRowsEl.appendChild(row);
-    }
-    if (!hasAgyQuota && hasCodexQuota) {
-      const row = document.createElement("div");
-      row.className = "quota-row-inline-empty";
-      row.append(createText("strong", "", "Antigravity"), createText("span", "", wt("quotaNoData")));
-      wsQuotaMissingRowsEl.appendChild(row);
-    }
+  if (wsGeminiChatControls) {
+    wsGeminiChatControls.hidden = !canReadGemini;
+    const status = workspaceCtx?.system?.geminiChatQuotaStatus;
+    wsGeminiChatStatus.textContent = wt(status === "permission-required" ? "quotaPermission"
+      : status === "ok" || status === "unchanged" ? "geminiChatWatching" : "geminiChatWaiting");
+    wsOpenGeminiUsage.textContent = wt("geminiChatUsage");
   }
 
   if (wsQuotaFallbackEl && quotaSummaryEl) {
@@ -3014,6 +2978,9 @@ function renderWorkspaceChrome(sessions) {
 }
 
 function initWorkspaceControls() {
+  wsOpenGeminiUsage?.addEventListener("click", () => {
+    void window.dashboardAPI?.workspaceAction({ type: "open-gemini-chat-usage" }).catch(() => {});
+  });
   if (!hasWorkspaceDom()) return;
 
   if (wsNavEl) {

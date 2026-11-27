@@ -68,8 +68,11 @@
             </div>
             <div id="wsGeminiQuotaStatus" class="note" role="status" hidden></div>
             <div id="quotaSummary" class="quota-summary" hidden></div>
-            <div id="wsQuotaMissingRows"></div>
             <div id="wsQuotaFallback" class="note" hidden></div>
+            <div id="wsGeminiChatControls" class="note" hidden>
+              <span id="wsGeminiChatStatus"></span>
+              <button id="wsOpenGeminiUsage" type="button" class="ui-btn quiet"></button>
+            </div>
           </div>
           <div class="qp-col qp-side">
             <div class="block-head">
@@ -86,6 +89,7 @@
   <script src="./session-focus-unavailable.js"></script>
   <script src="./language-picker.js"></script>
   <script src="./quota-balance.js"></script>
+  <script src="./quota-view-model.js"></script>
   <script src="./dashboard-renderer.js"></script>
 </body>
 </html>

@@ -39,9 +39,11 @@ const { DEEPSEEK_QUOTA_FIELDS } = require("./deepseek-balance-normalizer");
 const { KIMI_QUOTA_FIELDS } = require("./kimi-quota-normalizer");
 
 const { GEMINI_ANTIGRAVITY_QUOTA_SOURCE } = require("./antigravity-usage-reader");
+const { GEMINI_CHAT_SOURCE, GEMINI_CHAT_QUOTA_FIELDS } = require("./gemini-chat-quota");
 
 const QUOTA_PROVIDER_FIELDS = {
   antigravityQuota: ANTIGRAVITY_QUOTA_FIELDS,
+  geminiChatQuota: GEMINI_CHAT_QUOTA_FIELDS,
   claudeQuota: CLAUDE_QUOTA_FIELDS,
   codexQuota: CODEX_QUOTA_FIELDS,
   codexSparkQuota: CODEX_QUOTA_FIELDS,
@@ -376,7 +378,8 @@ function createAccountQuotaStore(options = {}) {
       acceptedAny = true;
       const observed = Object.fromEntries(Object.entries(accepted).map(([field, bucket]) => [
         field,
-        { ...bucket, seenAt: nowMs },
+        { ...bucket, seenAt: providerKey === "geminiChatQuota" && Number.isFinite(bucket.capturedAt)
+          ? Math.min(nowMs, bucket.capturedAt) : nowMs },
       ]));
       // Legacy reports and other providers merge per bucket: a partial
       // report must not evict a sibling that is still valid. Window-aware
@@ -395,7 +398,7 @@ function createAccountQuotaStore(options = {}) {
         for (const field of Object.keys(observed)) {
           const priorSeenAt = Number(existing.group[field] && existing.group[field].seenAt);
           if (!Number.isFinite(priorSeenAt)
-            || Math.floor(nowMs / SEEN_QUANTUM_MS) > Math.floor(priorSeenAt / SEEN_QUANTUM_MS)) {
+            || Math.floor(observed[field].seenAt / SEEN_QUANTUM_MS) > Math.floor(priorSeenAt / SEEN_QUANTUM_MS)) {
             seenAdvanced = true;
             break;
           }
@@ -483,9 +486,9 @@ function createAccountQuotaStore(options = {}) {
       if (!b.host) return 1;
       return a.host.localeCompare(b.host);
     });
-    const localCodexProfiles = out.filter((entry) => typeof entry.sourceKey === "string"
-      && entry.sourceKey.startsWith("codex-profile:"));
-    const mergeableSources = out.filter((entry) => !localCodexProfiles.includes(entry));
+    const separateSources = out.filter(({ sourceKey }) => sourceKey?.startsWith("codex-profile:")
+      || sourceKey === GEMINI_CHAT_SOURCE || sourceKey === GEMINI_ANTIGRAVITY_QUOTA_SOURCE);
+    const mergeableSources = out.filter((entry) => !separateSources.includes(entry));
     if (options.mergeSources !== true || mergeableSources.length <= 1) return out;
 
     // The merged view is a single synthetic source; nothing can collide with it.
@@ -545,7 +548,7 @@ function createAccountQuotaStore(options = {}) {
         hasAny = true;
       }
     }
-    return hasAny ? [merged, ...localCodexProfiles] : localCodexProfiles;
+    return hasAny ? [merged, ...separateSources] : separateSources;
   }
 
   function flush() {

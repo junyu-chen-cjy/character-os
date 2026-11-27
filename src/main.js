@@ -2426,6 +2426,8 @@ function deliverRendererThemeConfig() {
 }
 
 const codexProfiles = loadCodexProfiles({ logWarn: console.warn });
+let antigravityQuotaMonitor;
+let geminiChatQuotaMonitor;
 const _stateCtx = {
   get theme() { return getActiveTheme(); },
   get win() { return win; },
@@ -2487,6 +2489,7 @@ const _stateCtx = {
   buildTrayMenu: () => buildTrayMenu(),
   debugLog: (msg) => sessionLog(msg),
   broadcastSessionSnapshot: (snapshot) => {
+    antigravityQuotaMonitor?.observeSessions(snapshot.sessions);
     reconcilePowerSaveBlocker();
     broadcastDashboardSessionSnapshot(snapshot);
     broadcastSessionHudSnapshot(snapshot);
@@ -5171,24 +5174,53 @@ function buildWorkspaceContextPayload() {
       uptimeSec: Math.floor(os.uptime()),
       serverPort: getHookServerPort(),
       doNotDisturb: !!doNotDisturb,
+      antigravityQuotaStatus: antigravityQuotaMonitor?.getStatus(),
+      geminiChatQuotaStatus: geminiChatQuotaMonitor?.getStatus(),
       quotaPinned: !!sessionHudPinned,
     },
   };
 }
 
-const { GEMINI_ANTIGRAVITY_QUOTA_SOURCE, createAntigravityUsageRefresh } = require("./antigravity-usage-reader");
+const { GEMINI_ANTIGRAVITY_QUOTA_SOURCE, createAntigravityUsageRefresh, createQuotaMonitor } = require("./antigravity-usage-reader");
+const { GEMINI_CHAT_SOURCE, GEMINI_CHAT_USAGE_URL, createGeminiChatQuotaRefresh } = require("./gemini-chat-quota");
+const canReadQuotaAccessibility = () => systemPreferences.isTrustedAccessibilityClient(false);
+const systemIdleStateForQuota = () => powerMonitor.getSystemIdleState(30);
 const refreshGeminiAntigravityQuota = isMac ? createAntigravityUsageRefresh({
-  isTrusted: () => systemPreferences.isTrustedAccessibilityClient(false),
+  isTrusted: canReadQuotaAccessibility,
+  getPrevious: () => _state.buildSessionSnapshot().accountQuota
+    .find(source => source.sourceKey === GEMINI_ANTIGRAVITY_QUOTA_SOURCE)?.antigravityQuota?.group,
   publish: (antigravityQuota) => _state.updateAccountQuota(GEMINI_ANTIGRAVITY_QUOTA_SOURCE, {
     displayHost: "Gemini App",
     antigravityQuota,
   }),
 }) : null;
+if (refreshGeminiAntigravityQuota) {
+  antigravityQuotaMonitor = createQuotaMonitor({
+    refresh: refreshGeminiAntigravityQuota,
+    systemIdleState: systemIdleStateForQuota,
+  });
+  const refresh = createGeminiChatQuotaRefresh({
+    isTrusted: canReadQuotaAccessibility,
+    publish: (geminiChatQuota) => _state.updateAccountQuota(GEMINI_CHAT_SOURCE, {
+      displayHost: "gemini.google.com/usage",
+      geminiChatQuota,
+    }),
+  });
+  geminiChatQuotaMonitor = createQuotaMonitor({ refresh, systemIdleState: systemIdleStateForQuota });
+  app.on("before-quit", () => {
+    antigravityQuotaMonitor.stop();
+    geminiChatQuotaMonitor.stop();
+  });
+}
 
 async function runWorkspaceActionFromDashboard(payload) {
   const type = typeof payload.type === "string" ? payload.type : "";
   if (type === "read-gemini-antigravity-quota") {
     return refreshGeminiAntigravityQuota?.() || { status: "unsupported" };
+  }
+  if (type === "open-gemini-chat-usage") {
+    await shell.openExternal(GEMINI_CHAT_USAGE_URL);
+    return { status: "ok" };
   }
   if (type === "open-command") {
     chatWindow.open();
@@ -6097,6 +6129,8 @@ if (!gotTheLock) {
       filePath: path.join(app.getPath("userData"), "windows-process-chain-shadow.log"),
     });
     createWindow();
+    antigravityQuotaMonitor?.start();
+    geminiChatQuotaMonitor?.start();
     // nativeTheme reads are only used to pick an appearance, so subscribing
     // after the pet window exists keeps startup free of extra reloads. The
     // first did-finish-load repeats the resolution once because the value

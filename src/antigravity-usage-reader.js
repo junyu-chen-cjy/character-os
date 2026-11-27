@@ -40,11 +40,11 @@ function parseUsagePanel(text, capturedAt = Date.now()) {
   return Object.keys(result).length ? result : null;
 }
 
-function readUsagePanel() {
+function readQuotaPanel(workerData) {
   return new Promise(resolve => {
     let worker;
     try {
-      worker = new Worker(path.join(__dirname, "antigravity-usage-worker.js"));
+      worker = new Worker(path.join(__dirname, "antigravity-usage-worker.js"), { workerData });
     } catch {
       resolve({ status: "unavailable" });
       return;
@@ -64,9 +64,22 @@ function readUsagePanel() {
   });
 }
 
-function createAntigravityUsageRefresh({ isTrusted, publish, read = readUsagePanel, now = Date.now }) {
+function samePanelObservation(group, previous) {
+  if (!previous || Object.keys(previous).length !== Object.keys(group).length) return false;
+  return Object.entries(group).every(([field, bucket]) => {
+    const saved = previous[field];
+    if (!saved || saved.usedPercent !== bucket.usedPercent || saved.windowMinutes !== bucket.windowMinutes) return false;
+    if (!bucket.resetAt || !saved.resetAt) return !bucket.resetAt && !saved.resetAt;
+    const previousCountdown = saved.resetAt - saved.lastSeenAt;
+    return Number.isFinite(previousCountdown)
+      && Math.abs(bucket.resetAt - bucket.capturedAt - previousCountdown) < 60000;
+  });
+}
+
+function createAntigravityUsageRefresh({ isTrusted, publish, getPrevious, read = readQuotaPanel, now = Date.now }) {
   let pending;
   let lastAttempt = -Infinity;
+  let lastPanelText;
 
   async function run() {
     try {
@@ -75,7 +88,13 @@ function createAntigravityUsageRefresh({ isTrusted, publish, read = readUsagePan
       const capturedAt = now();
       const group = parseUsagePanel(result.text, capturedAt);
       if (!group) return { status: "unrecognized" };
+      // An already-open menu can keep showing the same relative countdown.
+      // Do not move its reset forward or bump freshness on those reads.
+      if (result.text === lastPanelText || samePanelObservation(group, getPrevious?.())) {
+        return { status: "unchanged" };
+      }
       publish(group);
+      lastPanelText = result.text;
       return { status: "ok", capturedAt };
     } catch {
       return { status: "unavailable" };
@@ -93,4 +112,63 @@ function createAntigravityUsageRefresh({ isTrusted, publish, read = readUsagePan
   };
 }
 
-module.exports = { GEMINI_ANTIGRAVITY_QUOTA_SOURCE, createAntigravityUsageRefresh, parseUsagePanel };
+const MINUTE = 60000;
+
+function createQuotaMonitor({ refresh, systemIdleState, now = Date.now }) {
+  let timer;
+  let nextAttempt = 0;
+  let lastAttempt = -Infinity;
+  let failureCount = 0;
+  let pending = false;
+  let status = "waiting";
+  let ownSessions = new Map();
+
+  async function poll() {
+    const current = now();
+    if (pending || current < nextAttempt || current - lastAttempt < MINUTE) return;
+    const idle = systemIdleState();
+    if (idle !== "active" && idle !== "idle") return;
+    pending = true;
+    lastAttempt = current;
+    try {
+      try {
+        ({ status } = await refresh());
+      } catch {
+        status = "unavailable";
+      }
+      failureCount = status === "ok" || status === "unchanged" ? 0 : failureCount + 1;
+      const minutes = status === "ok" ? 10
+        : status === "unchanged" || status === "open-usage" ? 2
+          : Math.min(10, 2 ** Math.min(failureCount, 4));
+      nextAttempt = now() + minutes * MINUTE;
+    } finally { pending = false; }
+  }
+
+  function observeSessions(sessions) {
+    const next = new Map();
+    for (const session of sessions ?? []) {
+      if (session.agentId !== "antigravity-cli" || session.host || session.startupRecovered || session.headless) continue;
+      const previous = ownSessions.get(session.id);
+      if (previous === "running" && session.badge === "done") {
+        nextAttempt = Math.min(nextAttempt, now() + 15000);
+      }
+      next.set(session.id, session.badge);
+    }
+    ownSessions = next;
+  }
+
+  return {
+    start() {
+      if (timer) return;
+      timer = setInterval(() => { void poll(); }, 30000);
+      timer.unref();
+      void poll();
+    },
+    stop() { clearInterval(timer); timer = null; },
+    poll,
+    observeSessions,
+    getStatus: () => status,
+  };
+}
+
+module.exports = { GEMINI_ANTIGRAVITY_QUOTA_SOURCE, createAntigravityUsageRefresh, createQuotaMonitor, parseUsagePanel, readQuotaPanel };
