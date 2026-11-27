@@ -114,7 +114,7 @@ function createAntigravityUsageRefresh({ isTrusted, publish, getPrevious, read =
 
 const MINUTE = 60000;
 
-function createQuotaMonitor({ refresh, systemIdleState, now = Date.now }) {
+function createQuotaMonitor({ refresh, systemIdleState, now = Date.now, successMinutes = 10 }) {
   let timer;
   let nextAttempt = 0;
   let lastAttempt = -Infinity;
@@ -137,7 +137,7 @@ function createQuotaMonitor({ refresh, systemIdleState, now = Date.now }) {
         status = "unavailable";
       }
       failureCount = status === "ok" || status === "unchanged" ? 0 : failureCount + 1;
-      const minutes = status === "ok" ? 10
+      const minutes = status === "ok" ? successMinutes
         : status === "unchanged" || status === "open-usage" ? 2
           : Math.min(10, 2 ** Math.min(failureCount, 4));
       nextAttempt = now() + minutes * MINUTE;

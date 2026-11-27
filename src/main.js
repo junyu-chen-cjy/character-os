@@ -5183,6 +5183,12 @@ function buildWorkspaceContextPayload() {
 
 const { GEMINI_ANTIGRAVITY_QUOTA_SOURCE, createAntigravityUsageRefresh, createQuotaMonitor } = require("./antigravity-usage-reader");
 const { GEMINI_CHAT_SOURCE, GEMINI_CHAT_USAGE_URL, createGeminiChatQuotaRefresh } = require("./gemini-chat-quota");
+const { SOURCE: ANTIGRAVITY_CLI_SOURCE, createCliQuotaRefresh } = require("./antigravity-cli-quota");
+const refreshAntigravityCli = createCliQuotaRefresh({
+  publish: antigravityCliQuota => _state.updateAccountQuota(ANTIGRAVITY_CLI_SOURCE, {
+    displayHost: "Antigravity CLI /usage", antigravityCliQuota,
+  }),
+});
 const canReadQuotaAccessibility = () => systemPreferences.isTrustedAccessibilityClient(false);
 const systemIdleStateForQuota = () => powerMonitor.getSystemIdleState(30);
 const refreshGeminiAntigravityQuota = isMac ? createAntigravityUsageRefresh({
@@ -5196,7 +5202,11 @@ const refreshGeminiAntigravityQuota = isMac ? createAntigravityUsageRefresh({
 }) : null;
 if (refreshGeminiAntigravityQuota) {
   antigravityQuotaMonitor = createQuotaMonitor({
-    refresh: refreshGeminiAntigravityQuota,
+    successMinutes: 5,
+    refresh: async () => {
+      const result = await refreshAntigravityCli();
+      return result.status === "ok" ? result : refreshGeminiAntigravityQuota();
+    },
     systemIdleState: systemIdleStateForQuota,
   });
   const refresh = createGeminiChatQuotaRefresh({
@@ -5216,7 +5226,8 @@ if (refreshGeminiAntigravityQuota) {
 async function runWorkspaceActionFromDashboard(payload) {
   const type = typeof payload.type === "string" ? payload.type : "";
   if (type === "read-gemini-antigravity-quota") {
-    return refreshGeminiAntigravityQuota?.() || { status: "unsupported" };
+    const result = await refreshAntigravityCli();
+    return result.status === "ok" ? result : refreshGeminiAntigravityQuota?.() || { status: "unsupported" };
   }
   if (type === "open-gemini-chat-usage") {
     await shell.openExternal(GEMINI_CHAT_USAGE_URL);

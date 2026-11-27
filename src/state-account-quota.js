@@ -40,9 +40,11 @@ const { KIMI_QUOTA_FIELDS } = require("./kimi-quota-normalizer");
 
 const { GEMINI_ANTIGRAVITY_QUOTA_SOURCE } = require("./antigravity-usage-reader");
 const { GEMINI_CHAT_SOURCE, GEMINI_CHAT_QUOTA_FIELDS } = require("./gemini-chat-quota");
+const { SOURCE: CLI_SOURCE, normalizeCliGroup } = require("./antigravity-cli-quota");
 
 const QUOTA_PROVIDER_FIELDS = {
   antigravityQuota: ANTIGRAVITY_QUOTA_FIELDS,
+  antigravityCliQuota: [],
   geminiChatQuota: GEMINI_CHAT_QUOTA_FIELDS,
   claudeQuota: CLAUDE_QUOTA_FIELDS,
   codexQuota: CODEX_QUOTA_FIELDS,
@@ -51,6 +53,10 @@ const QUOTA_PROVIDER_FIELDS = {
   deepseekQuota: DEEPSEEK_QUOTA_FIELDS,
 };
 const QUOTA_PROVIDER_KEYS = Object.keys(QUOTA_PROVIDER_FIELDS);
+function normalizeProviderGroup(value, provider) {
+  return provider === "antigravityCliQuota" ? normalizeCliGroup(value)
+    : normalizeQuotaGroup(value, QUOTA_PROVIDER_FIELDS[provider]);
+}
 
 const DEFAULT_PERSIST_PATH = path.join(os.homedir(), ".clawd", "account-quota.json");
 const PERSIST_DEBOUNCE_MS = 2000;
@@ -230,7 +236,7 @@ function createAccountQuotaStore(options = {}) {
         // Drop only that ambiguous cache; the next real main report restores
         // it, while known Spark and unrelated provider caches remain intact.
         if (providerKey === "codexQuota" && preModelRoutingPersist) continue;
-        let group = normalizeQuotaGroup(stored.group, QUOTA_PROVIDER_FIELDS[providerKey]);
+        let group = normalizeProviderGroup(stored.group, providerKey);
         if (!group) continue;
         const updatedAt = Number(stored.updatedAt);
         const lastSeenAt = Number(stored.lastSeenAt);
@@ -358,10 +364,11 @@ function createAccountQuotaStore(options = {}) {
     let acceptedAny = false;
     if (record && record.host !== sourceHost) record.host = sourceHost;
     for (const providerKey of QUOTA_PROVIDER_KEYS) {
-      const group = normalizeQuotaGroup(quotas[providerKey], QUOTA_PROVIDER_FIELDS[providerKey]);
+      const group = normalizeProviderGroup(quotas[providerKey], providerKey);
       if (!group) continue;
       const existing = record && record[providerKey];
       const isCompleteReport = (isWindowAwareCodexProvider(providerKey) && hasReportedWindow(group))
+        || providerKey === "antigravityCliQuota"
         || (providerKey === "antigravityQuota" && sourceKey === GEMINI_ANTIGRAVITY_QUOTA_SOURCE);
       // A window-aware Codex payload is a complete rate_limits snapshot. A
       // newer single 7-day primary must retire the old short-window bucket,
@@ -487,7 +494,7 @@ function createAccountQuotaStore(options = {}) {
       return a.host.localeCompare(b.host);
     });
     const separateSources = out.filter(({ sourceKey }) => sourceKey?.startsWith("codex-profile:")
-      || sourceKey === GEMINI_CHAT_SOURCE || sourceKey === GEMINI_ANTIGRAVITY_QUOTA_SOURCE);
+      || sourceKey === CLI_SOURCE || sourceKey === GEMINI_CHAT_SOURCE || sourceKey === GEMINI_ANTIGRAVITY_QUOTA_SOURCE);
     const mergeableSources = out.filter((entry) => !separateSources.includes(entry));
     if (options.mergeSources !== true || mergeableSources.length <= 1) return out;
 

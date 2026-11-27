@@ -7,7 +7,7 @@
     antigravityQuota: [["geminiFiveHour", 300, "gemini"], ["geminiWeekly", 10080, "gemini"],
       ["thirdPartyFiveHour", 300, "thirdParty"], ["thirdPartyWeekly", 10080, "thirdParty"]],
   };
-  const staleMinutes = { codexQuota: 60, codexSparkQuota: 60, antigravityQuota: 30, geminiChatQuota: 30, kimiQuota: 7, deepseekQuota: 12 };
+  const staleMinutes = { codexQuota: 60, codexSparkQuota: 60, antigravityQuota: 30, antigravityCliQuota: 15, geminiChatQuota: 30, kimiQuota: 7, deepseekQuota: 12 };
 
   function describeWindow(bucket, providerKey, now, fallbackMinutes, lastSeenAt) {
     if (!bucket || !Number.isFinite(bucket.usedPercent)) return null;
@@ -25,11 +25,16 @@
   }
 
   function primaryWindow(sources, providerKey, now) {
+    if (providerKey === "antigravityQuota" && sources?.some(s => s.antigravityCliQuota)) providerKey = "antigravityCliQuota";
     let best = null;
     for (const source of sources ?? []) {
       const provider = source?.[providerKey];
       if (!provider?.group) continue;
-      for (const [key, minutes, modelGroup] of providers[providerKey] ?? []) {
+      const fields = providerKey === "antigravityCliQuota"
+        ? Object.entries(provider.group).map(([key, bucket]) => [key, bucket.windowMinutes, bucket.groupLabel])
+        : providers[providerKey] ?? [];
+      for (const [key, minutes, modelGroup] of fields) {
+        if (provider.group[key]?.disabled) continue;
         const window = describeWindow(provider.group[key], providerKey, now, minutes, provider.lastSeenAt);
         if (!window) continue;
         const item = { ...window, modelGroup, source: source.host || "" };

@@ -186,8 +186,9 @@
 
       const meta = el("div", "q-meta");
       const reset = item.bucket.expired ? "" : formatReset(item.bucket.resetAt, item.bucket.windowMinutes);
-      const group = item.bucket.modelGroup === "thirdParty" ? "Claude / GPT" : item.bucket.modelGroup === "gemini" ? "Gemini" : "";
-      const left = [group, windowLabel(item.bucket.windowMinutes), reset].filter(Boolean).join(" · ");
+      const group = item.bucket.modelGroup === "thirdParty" ? "Claude / GPT" : item.bucket.modelGroup === "gemini" ? "Gemini" : item.bucket.modelGroup || "";
+      const period = item.bucket.windowMinutes ? windowLabel(item.bucket.windowMinutes) : item.bucket.bucketLabel;
+      const left = [group, period, reset].filter(Boolean).join(" · ");
       meta.appendChild(el("span", "", left));
       const seen = item.bucket.lastSeenAt;
       if (item.bucket.stale || (seen && item.id === "antigravity")) {

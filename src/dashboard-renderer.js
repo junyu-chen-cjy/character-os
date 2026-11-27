@@ -72,15 +72,16 @@ const WS_STRINGS = {
   en: {
     quotaReadGemini: "Read Antigravity quota now",
     quotaReadInstructions: "In Gemini Antigravity, reopen the model picker → View Usage and wait for it to refresh.",
-    quotaReadOk: "Antigravity quota read from Gemini.",
-    quotaAutoReady: "Antigravity syncs automatically while Gemini’s View Usage panel is open.",
+    quotaReadOk: "Antigravity quota refreshed.",
+    quotaAutoReady: "Antigravity refreshes in the background using the official CLI.",
     quotaAutoUnavailable: "Waiting for Gemini in Antigravity mode.",
     quotaUnchanged: "The open panel has the same reading.",
     quotaStale: "Stale",
     quotaPendingReset: "Reset not yet confirmed",
+    quotaWindowDisabled: "Inactive while the weekly limit is exhausted",
     geminiChat: "Gemini Chat",
     geminiChatUsage: "Open Gemini Usage Limits",
-    geminiChatWaiting: "Gemini Chat syncs while its Usage Limits page is selected in Chrome.",
+    geminiChatWaiting: "The Character OS Chrome extension refreshes Gemini Chat in the background.",
     geminiChatWatching: "Gemini Chat is syncing from the official Usage Limits page.",
     quotaReadAt: "Read {time}",
     quotaPermission: "Grant Character OS access in macOS Privacy & Security → Accessibility.",
@@ -128,15 +129,16 @@ const WS_STRINGS = {
   zh: {
     quotaReadGemini: "立即读取 Antigravity 额度",
     quotaReadInstructions: "请在 Gemini 的 Antigravity 模型菜单重新打开 View Usage，等刷新完成后读取。",
-    quotaReadOk: "已从 Gemini 读取 Antigravity 额度。",
-    quotaAutoReady: "Gemini 的 View Usage 面板打开时，Antigravity 额度会自动同步。",
+    quotaReadOk: "Antigravity 额度已刷新。",
+    quotaAutoReady: "Antigravity 通过官方 CLI 在后台自动刷新。",
     quotaAutoUnavailable: "等待 Gemini 打开 Antigravity。",
     quotaUnchanged: "面板中的读数未变化。",
     quotaStale: "已过期",
     quotaPendingReset: "尚未确认重置",
+    quotaWindowDisabled: "周额度耗尽，当前窗口不适用",
     geminiChat: "Gemini 日常聊天",
     geminiChatUsage: "打开 Gemini 用量页",
-    geminiChatWaiting: "Chrome 中选中 Gemini 用量限额页时自动同步聊天额度。",
+    geminiChatWaiting: "Character OS Chrome 扩展在后台自动刷新 Gemini 聊天额度。",
     geminiChatWatching: "Gemini 聊天额度已从官方用量限额页同步。",
     quotaReadAt: "读取于 {time}",
     quotaPermission: "请在 macOS「隐私与安全性 → 辅助功能」中授权 Character OS。",
@@ -1165,7 +1167,32 @@ function renderQuotaSummary(snapshot) {
   const sections = [];
 
   const antigravityRows = [];
+  const hasCliQuota = sources.some(source => source.antigravityCliQuota);
   for (const source of sources) {
+    if (source.antigravityCliQuota) {
+      const provider = source.antigravityCliQuota;
+      const rows = new Map();
+      for (const bucket of Object.values(provider.group)) {
+        if (!rows.has(bucket.groupLabel)) rows.set(bucket.groupLabel, []);
+        rows.get(bucket.groupLabel).push(bucket);
+      }
+      for (const [label, buckets] of rows) {
+        const row = document.createElement("div");
+        row.className = "quota-group-row";
+        row.appendChild(createText("div", "quota-group-header", `${label} · ${source.host} · ${new Date(provider.lastSeenAt).toLocaleString()}`));
+        for (const raw of buckets) {
+          if (raw.disabled) {
+            row.appendChild(createText("div", "note", `${raw.bucketLabel} · ${wt("quotaWindowDisabled")}`));
+            continue;
+          }
+          const bucket = globalThis.CharacterQuotaView.describeWindow(raw, "antigravityCliQuota", Date.now(), raw.windowMinutes);
+          row.appendChild(buildQuotaHalfBar(formatQuotaWindowLabel(bucket, raw.bucketLabel), bucket, quotaResetStyle(bucket, "countdown"), "antigravityCliQuota", "outer"));
+        }
+        antigravityRows.push(row);
+      }
+      continue;
+    }
+    if (hasCliQuota) continue;
     const provider = source.antigravityQuota;
     const group = provider && provider.group;
     if (!group) continue;
@@ -2661,7 +2688,7 @@ function summarizeProviderQuota(accountQuota, providerKey, now) {
       ? t("dashboardQuotaResetOn").replace("{date}", formatResetDate(bucket.resetAt))
       : t("dashboardQuotaResetIn").replace("{time}", formatResetIn(bucket.resetAt));
   }
-  return { ...bucket, windowLabel: formatQuotaWindowLabel(bucket, ""), resetText };
+  return { ...bucket, windowLabel: formatQuotaWindowLabel(bucket, bucket.bucketLabel || ""), resetText };
 }
 
 let geminiStatusShown = false;
@@ -2759,7 +2786,7 @@ function appendOverviewQuotasSection(fragment, now) {
       const sub = document.createElement("div");
       sub.className = "overview-quota-sub";
       sub.append(
-        createText("span", "", [item.summary.modelGroup === "thirdParty" ? "Claude / GPT" : item.summary.modelGroup === "gemini" ? "Gemini" : "", item.summary.windowLabel, item.summary.stale ? wt("quotaStale") : "", item.summary.resetText].filter(Boolean).join(" · ")),
+        createText("span", "", [item.summary.modelGroup === "thirdParty" ? "Claude / GPT" : item.summary.modelGroup === "gemini" ? "Gemini" : item.summary.modelGroup || "", item.summary.windowLabel, item.summary.stale ? wt("quotaStale") : "", item.summary.resetText].filter(Boolean).join(" · ")),
         createText(
           "span",
           "",
@@ -2909,7 +2936,9 @@ function renderWorkspaceChrome(sessions) {
 
   if (wsGeminiChatControls) {
     wsGeminiChatControls.hidden = !canReadGemini;
-    const status = workspaceCtx?.system?.geminiChatQuotaStatus;
+    const browserSource = snapshot.accountQuota?.find(source => source.geminiChatQuota && source.host === "Gemini · Chrome background");
+    const status = browserSource && Date.now() - browserSource.geminiChatQuota.lastSeenAt < 30 * 60000
+      ? "ok" : workspaceCtx?.system?.geminiChatQuotaStatus;
     wsGeminiChatStatus.textContent = wt(status === "permission-required" ? "quotaPermission"
       : status === "ok" || status === "unchanged" ? "geminiChatWatching" : "geminiChatWaiting");
     wsOpenGeminiUsage.textContent = wt("geminiChatUsage");

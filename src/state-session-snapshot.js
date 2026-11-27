@@ -770,6 +770,9 @@ function sessionSnapshotSignature(snapshot) {
       antigravityQuota: entry.antigravityQuota
         ? { group: entry.antigravityQuota.group, lastSeenAt: entry.antigravityQuota.lastSeenAt }
         : null,
+      antigravityCliQuota: entry.antigravityCliQuota
+        ? { group: entry.antigravityCliQuota.group, lastSeenAt: entry.antigravityCliQuota.lastSeenAt }
+        : null,
       geminiChatQuota: entry.geminiChatQuota
         ? { group: entry.geminiChatQuota.group, lastSeenAt: entry.geminiChatQuota.lastSeenAt }
         : null,

@@ -1271,6 +1271,10 @@ function rejectUnsafeLocalHookRequest(req, res, route) {
 }
 
 function routeHttpRequest(req, res, remoteProfile = null) {
+    if (!remoteProfile && req.url === "/quota/gemini-browser") {
+      require("./quota-browser-route").handleBrowserQuota(req, res, ctx.updateAccountQuota);
+      return;
+    }
     // Secure Remote SSH traffic must terminate at its profile-bound ingress,
     // never at the compatibility-oriented local main server. Rejecting the
     // nonce header here makes stale manual RemoteForward/proxy rules fail

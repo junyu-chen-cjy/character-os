@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Character OS · Gemini Quota",
+  "version": "0.1.0",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvGGv1rZkM/AMfl3AfirUYGKVuLiv/7iIUxS3qD/fcChyjqfO1ZXl+HV99Uk5wN9FKITESJ6q+a+4XEmIRpsKSQ6NLB95AY/tAU4heva/7JdoOT5uW58Jy9Z5MjgTi57EXOYU4EZaXAgND4dhwHt6kF8tkuVuGwDma6w0KVdCOExLpTZ7F5eCXgPtMVV9xKVuMzH/PQ1qZhR2rMV5Hm3woDHJJhFjDx9lKTWCwIeRkWE26rRmzw3P0D+2KW/hWlUTqBHo79OAskJCb5xl5UpF2lL20ufPkG8+KCMpU1DHQ1f1WLUEMmVaF7C+PH1q4UI3D83ugzW0KAjaxEni8b447wIDAQAB",
+  "permissions": [
+    "alarms",
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://gemini.google.com/usage*",
+    "http://127.0.0.1/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Refresh Gemini quota"
+  }
+}
