@@ -22,7 +22,11 @@ function readJson(file, fallback) {
   }
 }
 
-function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorage, shell, getLang }) {
+const CMD_WIDTH = 520;
+const CMD_MIN_HEIGHT = 60;
+const CMD_MAX_HEIGHT = 640;
+
+function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorage, shell, getLang, screen }) {
   let win;
   let history;
   let settings;
@@ -277,8 +281,44 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
   handle("save-model", saveModel);
   handle("open-link", openLink);
 
+  function fromWindow(event) {
+    return Boolean(win && !win.isDestroyed() && event.sender === win.webContents);
+  }
+
+  // Place the box like a launcher: horizontally centred, in the upper third of
+  // the display the pointer is on.
+  function placeNearTop() {
+    if (!win || win.isDestroyed() || !screen || typeof screen.getCursorScreenPoint !== "function") return;
+    try {
+      const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+      const area = display.workArea;
+      const [, height] = win.getSize();
+      win.setPosition(
+        Math.round(area.x + (area.width - CMD_WIDTH) / 2),
+        Math.round(area.y + Math.min(area.height * 0.2, Math.max(40, area.height - height - 40))),
+      );
+    } catch {}
+  }
+
+  function resizeTo(height) {
+    if (!win || win.isDestroyed() || !Number.isFinite(height)) return;
+    const next = Math.round(Math.min(CMD_MAX_HEIGHT, Math.max(CMD_MIN_HEIGHT, height)));
+    const [width, current] = win.getContentSize();
+    if (width !== CMD_WIDTH || current !== next) win.setContentSize(CMD_WIDTH, next);
+  }
+
+  if (ipcMain && typeof ipcMain.on === "function") {
+    ipcMain.on("chat:resize", (event, height) => { if (fromWindow(event)) resizeTo(Number(height)); });
+    ipcMain.on("chat:dismiss", (event) => { if (fromWindow(event)) win.hide(); });
+    ipcMain.on("chat:blurred", (event) => {
+      // The box behaves like a launcher and leaves when focus does.
+      if (fromWindow(event)) win.hide();
+    });
+  }
+
   function open() {
     if (win && !win.isDestroyed()) {
+      if (typeof win.isVisible === "function" && !win.isVisible()) placeNearTop();
       if (typeof win.setTitle === "function") win.setTitle(resolveWindowTitle());
       if (typeof win.isMinimized === "function" && win.isMinimized()) win.restore();
       if (typeof win.show === "function") win.show();
@@ -290,10 +330,18 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
     }
     const window = new BrowserWindow({
       title: resolveWindowTitle(),
-      width: 640, height: 500, minWidth: 440, minHeight: 360,
+      width: CMD_WIDTH, height: CMD_MIN_HEIGHT, useContentSize: true,
       show: false,
-      ...(process.platform === "darwin" ? { acceptFirstMouse: true } : {}),
-      backgroundColor: nativeTheme.shouldUseDarkColors ? "#161618" : "#f5f5f7",
+      frame: false,
+      resizable: false,
+      maximizable: false,
+      minimizable: false,
+      fullscreenable: false,
+      skipTaskbar: true,
+      alwaysOnTop: true,
+      ...(process.platform === "darwin"
+        ? { acceptFirstMouse: true, vibrancy: "popover", visualEffectState: "active", backgroundColor: "#00000000", hasShadow: true }
+        : { backgroundColor: nativeTheme.shouldUseDarkColors ? "#1d1e22" : "#fcfcfa" }),
       webPreferences: {
         preload: path.join(__dirname, "preload-chat.js"),
         contextIsolation: true, sandbox: true, nodeIntegration: false,
@@ -301,6 +349,8 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
       },
     });
     win = window;
+    if (typeof window.setAlwaysOnTop === "function") window.setAlwaysOnTop(true, "floating");
+    placeNearTop();
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.webContents.on("will-navigate", event => event.preventDefault());
     window.once("ready-to-show", () => {

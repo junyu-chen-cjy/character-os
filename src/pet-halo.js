@@ -11,8 +11,8 @@ const isLinux = process.platform === "linux";
 const isMac = process.platform === "darwin";
 const isWin = process.platform === "win32";
 
-const HALO_WIDTH = 284;
-const HALO_DEFAULT_HEIGHT = 114;
+const HALO_WIDTH = 272;
+const HALO_DEFAULT_HEIGHT = 150;
 const HALO_MIN_HEIGHT = 76;
 const HALO_MAX_HEIGHT = 220;
 const HALO_PET_GAP = 6;

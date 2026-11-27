@@ -1,0 +1,205 @@
+/* Character OS — shared visual language.
+ *
+ * "Graphite": a neutral, slightly cool grey scale; one flat accent used only
+ * for focus, primary actions and selection; meaning (ok / warn / bad) is
+ * reserved for status. Surfaces are separated by hairlines and tone steps, not
+ * by boxes inside boxes. Every window links this file first and builds on the
+ * tokens below, so a change here changes the whole product.
+ */
+:root {
+  color-scheme: light dark;
+
+  /* type */
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  --fs-2xs: 10.5px;
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 13px;
+  --fs-lg: 15px;
+  --fs-xl: 20px;
+
+  /* shape */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 14px;
+
+  /* motion */
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dur-1: 120ms;
+  --dur-2: 200ms;
+
+  /* dark (default) */
+  --bg: #141517;
+  --bg-side: #101113;
+  --surface: #1a1b1e;
+  --surface-2: #212226;
+  --surface-3: #2a2b30;
+  --float: rgba(28, 29, 33, 0.94);
+  --float-solid: #1d1e22;
+  --line: rgba(255, 255, 255, 0.075);
+  --line-2: rgba(255, 255, 255, 0.13);
+  --hover: rgba(255, 255, 255, 0.06);
+  --press: rgba(255, 255, 255, 0.10);
+  --text: #ececef;
+  --text-2: #a3a5ad;
+  --text-3: #7a7c85;
+  --accent: #8892ff;
+  --accent-hi: #a9b0ff;
+  --accent-bg: rgba(136, 146, 255, 0.15);
+  --on-accent: #0f1124;
+  --ok: #5fd39a;
+  --warn: #f0b24a;
+  --bad: #f4707f;
+  --meter: #e4e5ea;
+  --meter-track: rgba(255, 255, 255, 0.10);
+  --focus: 0 0 0 2px rgba(136, 146, 255, 0.55);
+  --shadow-float: 0 0 0 0.5px rgba(255, 255, 255, 0.10), 0 20px 48px -10px rgba(0, 0, 0, 0.65), 0 4px 14px rgba(0, 0, 0, 0.35);
+  --shadow-pop: 0 0 0 0.5px rgba(255, 255, 255, 0.10), 0 12px 32px -6px rgba(0, 0, 0, 0.6);
+  --scroll: rgba(255, 255, 255, 0.16);
+  --scroll-hi: rgba(255, 255, 255, 0.28);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f7f7f5;
+    --bg-side: #efefec;
+    --surface: #ffffff;
+    --surface-2: #f2f2ef;
+    --surface-3: #e8e8e4;
+    --float: rgba(252, 252, 250, 0.94);
+    --float-solid: #fcfcfa;
+    --line: rgba(20, 20, 26, 0.08);
+    --line-2: rgba(20, 20, 26, 0.15);
+    --hover: rgba(20, 20, 26, 0.05);
+    --press: rgba(20, 20, 26, 0.09);
+    --text: #1a1b1e;
+    --text-2: #585a62;
+    --text-3: #81838b;
+    --accent: #4a56d6;
+    --accent-hi: #3a45bd;
+    --accent-bg: rgba(74, 86, 214, 0.10);
+    --on-accent: #ffffff;
+    --ok: #178a5a;
+    --warn: #ad6a05;
+    --bad: #cc2d44;
+    --meter: #26272b;
+    --meter-track: rgba(20, 20, 26, 0.09);
+    --focus: 0 0 0 2px rgba(74, 86, 214, 0.45);
+    --shadow-float: 0 0 0 0.5px rgba(20, 20, 26, 0.12), 0 18px 44px -12px rgba(24, 24, 40, 0.30), 0 3px 10px rgba(24, 24, 40, 0.10);
+    --shadow-pop: 0 0 0 0.5px rgba(20, 20, 26, 0.12), 0 10px 28px -8px rgba(24, 24, 40, 0.28);
+    --scroll: rgba(20, 20, 26, 0.16);
+    --scroll-hi: rgba(20, 20, 26, 0.30);
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font);
+  font-size: var(--fs-md);
+  line-height: 1.4;
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+[hidden] { display: none !important; }
+button, input, textarea, select { font: inherit; color: inherit; }
+button { cursor: default; }
+::selection { background: var(--accent-bg); }
+.num { font-variant-numeric: tabular-nums; }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--scroll);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--scroll-hi); background-clip: padding-box; border: 3px solid transparent; }
+
+/* ── shared primitives ─────────────────────────────────────────────── */
+
+.ui-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: var(--surface-3);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background var(--dur-1) var(--ease), opacity var(--dur-1) var(--ease), transform 80ms var(--ease);
+}
+.ui-btn:hover:not(:disabled) { background: var(--press); }
+.ui-btn:active:not(:disabled) { transform: scale(0.97); }
+.ui-btn:focus-visible { outline: none; box-shadow: var(--focus); }
+.ui-btn:disabled { opacity: 0.45; }
+.ui-btn.primary { background: var(--accent); color: var(--on-accent); }
+.ui-btn.primary:hover:not(:disabled) { background: var(--accent-hi); }
+.ui-btn.quiet { background: transparent; color: var(--text-2); }
+.ui-btn.quiet:hover:not(:disabled) { background: var(--hover); color: var(--text); }
+.ui-btn.danger { color: var(--bad); }
+
+.ui-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--hover);
+  box-shadow: inset 0 0 0 0.5px var(--line-2);
+  color: var(--text-3);
+  font-family: var(--font);
+  font-size: var(--fs-2xs);
+  font-weight: 500;
+}
+
+.ui-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-3);
+  flex: none;
+}
+.ui-dot.ok { background: var(--ok); }
+.ui-dot.warn { background: var(--warn); }
+.ui-dot.bad { background: var(--bad); }
+.ui-dot.live { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+
+/* thin quota/progress meter: neutral fill, severity only when it matters */
+.ui-meter {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--meter-track);
+  overflow: hidden;
+}
+.ui-meter > i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--meter);
+  transition: width 240ms var(--ease);
+}
+.ui-meter.warn > i { background: var(--warn); }
+.ui-meter.bad > i { background: var(--bad); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0ms !important; animation-duration: 0ms !important; }
+}

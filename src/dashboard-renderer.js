@@ -104,6 +104,15 @@ const WS_STRINGS = {
     projectRecentCount: "{n} recent",
     focusSession: "Focus",
     remainingShort: "{pct}% left",
+    emptyTitle: "Nothing running",
+    emptyBody: "Agent sessions appear here as soon as they start.",
+    running: "{n} running",
+    awaiting: "{n} awaiting approval",
+    idle: "Idle",
+    readNow: "Read now",
+    reading: "Reading…",
+    readAt: "Read {time}",
+    projectsMore: "All projects",
   },
   zh: {
     quotaReadGemini: "读取 Gemini Antigravity 额度",
@@ -142,6 +151,15 @@ const WS_STRINGS = {
     projectRecentCount: "{n} 条近期记录",
     focusSession: "跳转",
     remainingShort: "剩余 {pct}%",
+    emptyTitle: "暂无运行中的会话",
+    emptyBody: "Agent 会话一开始就会出现在这里。",
+    running: "{n} 个运行中",
+    awaiting: "{n} 个待审批",
+    idle: "空闲",
+    readNow: "立即读取",
+    reading: "读取中…",
+    readAt: "读取于 {time}",
+    projectsMore: "全部项目",
   },
 };
 
@@ -2365,7 +2383,7 @@ function appendPlainGroup(fragment, group, byId, now, placed) {
   const section = document.createElement("section");
   section.className = "group";
   const host = group.displayHost || group.host || "";
-  section.appendChild(createText("h2", "group-title", host || t("sessionLocal")));
+  if (host) section.appendChild(createText("h2", "group-title", host));
 
   const cards = document.createElement("div");
   cards.className = "cards";
@@ -2570,7 +2588,7 @@ function appendProjectsSection(fragment, sessions) {
   const grid = document.createElement("div");
   grid.className = "project-grid";
 
-  for (const proj of projects.slice(0, workspaceView === "projects" ? 24 : 6)) {
+  for (const proj of projects.slice(0, workspaceView === "projects" ? 24 : 5)) {
     const card = document.createElement("article");
     card.className = "project-card";
 
@@ -2649,6 +2667,7 @@ function summarizeProviderQuota(accountQuota, providerKey, fields, now) {
         remaining,
         windowLabel: formatQuotaWindowLabel(raw, t(fallbackWin)),
         resetText,
+        lastSeenAt: Number(raw.lastSeenAt) || 0,
       };
       if (!best || item.used > best.used) best = item;
     }
@@ -2656,10 +2675,36 @@ function summarizeProviderQuota(accountQuota, providerKey, fields, now) {
   return best;
 }
 
+let geminiStatusShown = false;
+
+async function runGeminiRead() {
+  if (readingGeminiQuota || typeof window.dashboardAPI?.workspaceAction !== "function") return;
+  readingGeminiQuota = true;
+  geminiStatusShown = true;
+  render({ force: true });
+  try {
+    const result = await window.dashboardAPI.workspaceAction({ type: "read-gemini-antigravity-quota" });
+    geminiQuotaStatus = {
+      ok: "quotaReadOk",
+      "permission-required": "quotaPermission",
+      "open-gemini": "quotaOpenGemini",
+      "open-usage": "quotaReadInstructions",
+      refreshing: "quotaRefreshing",
+      unrecognized: "quotaUnrecognized",
+      "try-later": "quotaTryLater",
+    }[result?.status] || "quotaReadFailed";
+  } catch {
+    geminiQuotaStatus = "quotaReadFailed";
+  } finally {
+    readingGeminiQuota = false;
+    render({ force: true });
+  }
+}
+
 function appendOverviewQuotasSection(fragment, now) {
   const section = document.createElement("section");
   section.className = "group";
-  section.appendChild(createText("h2", "group-title", wt("quotasTitle")));
+  section.appendChild(createText("h2", "group-title", wt("navQuotas")));
 
   const grid = document.createElement("div");
   grid.className = "overview-quotas-grid";
@@ -2667,8 +2712,8 @@ function appendOverviewQuotasSection(fragment, now) {
   const icons = (snapshot && snapshot.quotaAgentIcons) || {};
   const providers = [
     {
+      id: "codex",
       name: "Codex",
-      color: "var(--id-codex-outer, #7c5cff)",
       iconUrl: icons.codexQuota || "",
       summary: summarizeProviderQuota(
         snapshot.accountQuota,
@@ -2678,8 +2723,8 @@ function appendOverviewQuotasSection(fragment, now) {
       ),
     },
     {
+      id: "antigravity",
       name: "Antigravity",
-      color: "var(--id-antigravity-outer, #0ea5e9)",
       iconUrl: icons.antigravityQuota || "",
       summary: summarizeProviderQuota(
         snapshot.accountQuota,
@@ -2694,6 +2739,7 @@ function appendOverviewQuotasSection(fragment, now) {
       ),
     },
   ];
+  const canReadGemini = workspaceCtx?.system?.platform === "darwin";
 
   for (const item of providers) {
     const card = document.createElement("div");
@@ -2705,7 +2751,6 @@ function appendOverviewQuotasSection(fragment, now) {
 
     const top = document.createElement("div");
     top.className = "overview-quota-top";
-
     const nameEl = document.createElement("span");
     nameEl.className = "overview-quota-name";
     if (item.iconUrl) {
@@ -2716,7 +2761,6 @@ function appendOverviewQuotasSection(fragment, now) {
       nameEl.appendChild(img);
     }
     nameEl.appendChild(document.createTextNode(item.name));
-
     const valEl = createText(
       "span",
       `overview-quota-val${item.summary ? "" : " is-empty"}`,
@@ -2732,20 +2776,45 @@ function appendOverviewQuotasSection(fragment, now) {
       fill.className = "overview-quota-fill";
       fill.style.width = `${item.summary.remaining}%`;
       fill.style.background = item.summary.used > QUOTA_HOT_AT
-        ? "var(--sev-hot, #f87171)"
+        ? "var(--bad)"
         : item.summary.used >= QUOTA_WARN_AT
-          ? "var(--sev-warn, #fbbf24)"
-          : item.color;
+          ? "var(--warn)"
+          : "var(--meter)";
       bar.appendChild(fill);
       card.appendChild(bar);
 
       const sub = document.createElement("div");
       sub.className = "overview-quota-sub";
       sub.append(
-        createText("span", "", item.summary.windowLabel || ""),
-        createText("span", "", item.summary.resetText || "")
+        createText("span", "", [item.summary.windowLabel, item.summary.resetText].filter(Boolean).join(" · ")),
+        createText(
+          "span",
+          "",
+          item.id === "antigravity" && item.summary.lastSeenAt
+            ? wt("readAt").replace("{time}", new Date(item.summary.lastSeenAt).toLocaleTimeString(i18nPayload?.lang, { hour: "2-digit", minute: "2-digit" }))
+            : ""
+        )
       );
       card.appendChild(sub);
+    }
+
+    if (item.id === "antigravity" && canReadGemini) {
+      const row = document.createElement("div");
+      row.className = "overview-quota-sub";
+      const status = createText("span", "", geminiStatusShown ? wt(geminiQuotaStatus) : "");
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "ui-btn quiet";
+      btn.style.height = "24px";
+      btn.textContent = readingGeminiQuota ? wt("reading") : wt("readNow");
+      btn.disabled = readingGeminiQuota;
+      btn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        void runGeminiRead();
+      });
+      row.append(status, btn);
+      row.style.alignItems = "center";
+      card.appendChild(row);
     }
 
     grid.appendChild(card);
@@ -2753,6 +2822,17 @@ function appendOverviewQuotasSection(fragment, now) {
 
   section.appendChild(grid);
   fragment.appendChild(section);
+}
+
+function createOverviewLayout() {
+  const root = document.createElement("div");
+  root.className = "ov";
+  const main = document.createElement("div");
+  main.className = "ov-main";
+  const rail = document.createElement("div");
+  rail.className = "ov-rail";
+  root.append(main, rail);
+  return { root, main, rail };
 }
 
 function hasWorkspaceDom() {
@@ -2769,9 +2849,52 @@ function renderWorkspaceChrome(sessions) {
     ? workspaceCtx.pendingApprovals.length
     : 0;
 
-  if (wsStatusDotEl) {
-    wsStatusDotEl.classList.toggle("has-approval", approvalsCount > 0);
-    wsStatusDotEl.classList.toggle("is-running", approvalsCount === 0 && runningCount > 0);
+  // Header: the view's own name, then one honest line about what is happening.
+  if (titleEl) {
+    const viewLabel = { overview: "navOverview", sessions: "navSessions", projects: "navProjects", quotas: "navQuotas" }[workspaceView];
+    titleEl.textContent = viewLabel ? wt(viewLabel) : wt("workspaceTitle");
+  }
+  if (wsStatusDotEl) wsStatusDotEl.hidden = true;
+  if (countEl) {
+    const tags = [];
+    if (approvalsCount > 0) tags.push(["warn", wt("awaiting").replace("{n}", approvalsCount)]);
+    if (runningCount > 0) tags.push(["live", wt("running").replace("{n}", runningCount)]);
+    if (!tags.length) tags.push(["", wt("idle")]);
+    countEl.replaceChildren(...tags.map(([tone, text]) => {
+      const tag = document.createElement("span");
+      tag.className = `tag${tone ? ` ${tone}` : ""}`;
+      const dot = document.createElement("span");
+      dot.className = `ui-dot${tone === "warn" ? " warn" : tone === "live" ? " live" : ""}`;
+      tag.append(dot, document.createTextNode(text));
+      return tag;
+    }));
+  }
+  const sessionsCountEl = wsNavEl && wsNavEl.querySelector("[data-ws-count='sessions']");
+  if (sessionsCountEl) {
+    sessionsCountEl.hidden = sessions.length === 0;
+    sessionsCountEl.textContent = String(sessions.length);
+    sessionsCountEl.className = `nav-count${approvalsCount > 0 ? " warn" : runningCount > 0 ? " live" : ""}`;
+  }
+  const footIcons = (snapshot && snapshot.quotaAgentIcons) || {};
+  for (const [imgId, svgId, url] of [
+    ["wsIcoCodex", "wsSvgCodex", footIcons.codexQuota],
+    ["wsIcoAntigravity", "wsSvgAntigravity", footIcons.antigravityQuota],
+  ]) {
+    const img = document.getElementById(imgId);
+    const svg = document.getElementById(svgId);
+    if (!img || !svg) continue;
+    if (url) {
+      if (img.getAttribute("src") !== url) img.src = url;
+      img.hidden = false;
+      svg.style.display = "none";
+      if (!img.dataset.bound) {
+        img.dataset.bound = "1";
+        img.addEventListener("error", () => { img.hidden = true; svg.style.display = ""; });
+      }
+    } else {
+      img.hidden = true;
+      svg.style.display = "";
+    }
   }
 
   if (wsNavEl) {
@@ -2789,7 +2912,6 @@ function renderWorkspaceChrome(sessions) {
     }
   }
 
-  if (wsLblCommandEl) wsLblCommandEl.textContent = wt("cmdButton");
   if (wsLblSettingsEl) wsLblSettingsEl.textContent = wt("settingsButton");
 
   const showQuotasDetail = workspaceView === "quotas";
@@ -2908,27 +3030,8 @@ function initWorkspaceControls() {
   }
 
   if (wsReadGeminiQuota) {
-    wsReadGeminiQuota.addEventListener("click", async () => {
-      if (readingGeminiQuota || typeof window.dashboardAPI?.workspaceAction !== "function") return;
-      readingGeminiQuota = true;
-      wsReadGeminiQuota.disabled = true;
-      try {
-        const result = await window.dashboardAPI.workspaceAction({ type: "read-gemini-antigravity-quota" });
-        geminiQuotaStatus = {
-          ok: "quotaReadOk",
-          "permission-required": "quotaPermission",
-          "open-gemini": "quotaOpenGemini",
-          "open-usage": "quotaReadInstructions",
-          refreshing: "quotaRefreshing",
-          unrecognized: "quotaUnrecognized",
-          "try-later": "quotaTryLater",
-        }[result?.status] || "quotaReadFailed";
-      } catch {
-        geminiQuotaStatus = "quotaReadFailed";
-      } finally {
-        readingGeminiQuota = false;
-        render({ force: true });
-      }
+    wsReadGeminiQuota.addEventListener("click", () => {
+      void runGeminiRead();
     });
   }
 
@@ -3001,8 +3104,10 @@ function render(options = {}) {
   }
   pruneSessionFolderActionState(sessions, now);
   const isWsDom = hasWorkspaceDom();
-  titleEl.textContent = isWsDom ? wt("workspaceTitle") : t("dashboardWindowTitle");
-  countEl.textContent = isWsDom ? String(count) : t("dashboardCount").replace("{n}", count);
+  if (!isWsDom) {
+    titleEl.textContent = t("dashboardWindowTitle");
+    countEl.textContent = t("dashboardCount").replace("{n}", count);
+  }
   document.title = isWsDom ? `Character OS · ${wt("workspaceTitle")}` : t("dashboardWindowTitle");
   renderQuotaSummary(snapshot);
   renderWorkspaceChrome(sessions);
@@ -3032,20 +3137,18 @@ function render(options = {}) {
   // this round and must not collapse into the generic empty state.
   if (count === 0 && orphanCount === 0 && approvalsCount === 0 && !(quick.active && quick.skeleton)) {
     if (isWsDom && workspaceView === "overview") {
-      const overviewEmpty = document.createDocumentFragment();
-      appendOverviewQuotasSection(overviewEmpty, now);
-      appendSessionHistory(overviewEmpty, now);
-      appendProjectsSection(overviewEmpty, sessions);
-      if (overviewEmpty.childNodes && overviewEmpty.childNodes.length === 1) {
-        const empty = document.createElement("div");
-        empty.className = "empty";
-        empty.append(
-          createText("div", "empty-title", t("dashboardEmptyTitle")),
-          createText("div", "empty-body", t("dashboardEmptyBody"))
-        );
-        overviewEmpty.appendChild(empty);
-      }
-      contentEl.replaceChildren(overviewEmpty);
+      const layout = createOverviewLayout();
+      const empty = document.createElement("div");
+      empty.className = "empty";
+      empty.append(
+        createText("div", "empty-title", wt("emptyTitle")),
+        createText("div", "empty-body", wt("emptyBody"))
+      );
+      layout.main.appendChild(empty);
+      appendSessionHistory(layout.main, now);
+      appendOverviewQuotasSection(layout.rail, now);
+      appendProjectsSection(layout.rail, sessions);
+      contentEl.replaceChildren(layout.root);
       return;
     }
     renderEmpty();
@@ -3056,17 +3159,18 @@ function render(options = {}) {
   const fragment = document.createDocumentFragment();
 
   appendPendingApprovalsSection(fragment, now);
-  if (isWsDom && workspaceView === "overview" && !quick.active) {
-    appendOverviewQuotasSection(fragment, now);
-  }
+  // Overview: sessions and history on the left, quotas and projects in a rail.
   // While a round is on, the groups come from its frozen presentation; the
   // ordinary dynamic ordering resumes as soon as it ends.
-  appendSessionGroups(fragment, byId, now);
-  if (isWsDom && workspaceView === "overview") {
-    appendProjectsSection(fragment, sessions);
-  }
-  appendSessionAutomationOrphans(fragment);
-  appendSessionHistory(fragment, now);
+  const overview = isWsDom && workspaceView === "overview";
+  const layout = overview ? createOverviewLayout() : null;
+  const mainHost = layout ? layout.main : fragment;
+  if (layout && !quick.active) appendOverviewQuotasSection(layout.rail, now);
+  appendSessionGroups(mainHost, byId, now);
+  if (layout) appendProjectsSection(layout.rail, sessions);
+  appendSessionAutomationOrphans(mainHost);
+  appendSessionHistory(mainHost, now);
+  if (layout) fragment.appendChild(layout.root);
 
   contentEl.replaceChildren(fragment);
   restoreSessionAutomationFocus(automationFocusKey);

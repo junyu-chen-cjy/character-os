@@ -11,10 +11,13 @@ const STRINGS = {
     untitledThread: "Untitled",
     connectModel: "Connect model",
     editModelTitle: "Model settings",
-    unconfiguredNotice: "No model configured.",
+    unconfiguredNotice: "No model connected.",
     configureButton: "Configure model",
-    placeholder: "Type a command or question…",
-    kbdHint: "↵ Send · ⇧↵ New line",
+    placeholder: "Ask anything or give a command…",
+    moreTitle: "More",
+    historyLabel: "History",
+    modelLabel: "Model",
+    noHistory: "No conversations yet.",
     send: "Send",
     stop: "Stop",
     generating: "Generating…",
@@ -45,8 +48,11 @@ const STRINGS = {
     editModelTitle: "模型配置",
     unconfiguredNotice: "尚未配置模型接口。",
     configureButton: "配置模型",
-    placeholder: "输入指令或问题…",
-    kbdHint: "↵ 发送 · ⇧↵ 换行",
+    placeholder: "输入问题或指令…",
+    moreTitle: "更多",
+    historyLabel: "历史记录",
+    modelLabel: "模型",
+    noHistory: "还没有对话。",
     send: "发送",
     stop: "停止",
     generating: "生成中…",
@@ -77,8 +83,11 @@ const STRINGS = {
     editModelTitle: "模型設定",
     unconfiguredNotice: "尚未設定模型介面。",
     configureButton: "設定模型",
-    placeholder: "輸入指令或問題…",
-    kbdHint: "↵ 傳送 · ⇧↵ 換行",
+    placeholder: "輸入問題或指令…",
+    moreTitle: "更多",
+    historyLabel: "歷史記錄",
+    modelLabel: "模型",
+    noHistory: "還沒有對話。",
     send: "傳送",
     stop: "停止",
     generating: "產生中…",
@@ -103,8 +112,11 @@ const el = id => document.getElementById(id);
 const messageInput = el("message");
 const transcript = el("transcript");
 const viewport = el("viewport");
-const settings = el("settings");
-const historyDrawer = el("history-drawer");
+const cmd = el("cmd");
+const historyPanel = el("history");
+const modelForm = el("model-form");
+const toolsStrip = el("tools");
+const moreBtn = el("more");
 const toggleHistoryBtn = el("toggle-history");
 
 let state;
@@ -113,7 +125,9 @@ let settingsRequested = false;
 let pending = false;
 let sidebarKey = "";
 let transcriptKey = "";
-let historyOpen = false;
+let view = "chat";
+let toolsOpen = false;
+let lastReportedHeight = 0;
 
 function t(key) {
   const dict = STRINGS[currentLang] || STRINGS.en;
@@ -123,19 +137,18 @@ function t(key) {
 function applyLocaleChrome() {
   document.documentElement.lang = currentLang;
   document.title = t("windowTitle");
-  toggleHistoryBtn.title = t("historyTitle");
-  toggleHistoryBtn.setAttribute("aria-label", t("historyTitle"));
-  el("new-chat").title = t("newChatTitle");
+  moreBtn.title = t("moreTitle");
+  moreBtn.setAttribute("aria-label", t("moreTitle"));
   el("new-chat-label").textContent = t("newChat");
+  el("history-label").textContent = t("historyLabel");
   el("drawer-title").textContent = t("recentThreads");
   el("setup-message").textContent = t("unconfiguredNotice");
   el("configure").textContent = t("configureButton");
   messageInput.placeholder = t("placeholder");
   messageInput.setAttribute("aria-label", t("title"));
-  el("kbd-hint").textContent = t("kbdHint");
-  el("stop").textContent = t("stop");
+  el("stop").setAttribute("aria-label", t("stop"));
+  el("stop").title = t("stop");
   el("send").setAttribute("aria-label", t("send"));
-  el("modal-title").textContent = t("modalTitle");
   el("lbl-base-url").textContent = t("baseUrl");
   el("lbl-model-id").textContent = t("modelId");
   el("lbl-api-key").textContent = t("apiKey");
@@ -153,13 +166,37 @@ function showError(target, message = "") {
 
 function syncTextareaHeight() {
   messageInput.style.height = "auto";
-  messageInput.style.height = `${Math.min(150, Math.max(24, messageInput.scrollHeight))}px`;
+  messageInput.style.height = `${Math.min(168, Math.max(24, messageInput.scrollHeight))}px`;
 }
 
-function setHistoryOpen(next) {
-  historyOpen = Boolean(next);
-  historyDrawer.hidden = !historyOpen;
-  toggleHistoryBtn.setAttribute("aria-expanded", historyOpen ? "true" : "false");
+// The window is exactly as tall as what is on screen; the main process clamps it.
+function reportHeight() {
+  const height = Math.ceil(cmd.getBoundingClientRect().height);
+  if (height > 40 && height !== lastReportedHeight && typeof window.chat.resize === "function") {
+    lastReportedHeight = height;
+    window.chat.resize(height);
+  }
+}
+new ResizeObserver(reportHeight).observe(cmd);
+
+function setView(next) {
+  view = next;
+  cmd.dataset.view = view;
+  historyPanel.hidden = view !== "history";
+  modelForm.hidden = view !== "model";
+  syncChrome();
+}
+
+function setToolsOpen(next) {
+  toolsOpen = Boolean(next);
+  moreBtn.setAttribute("aria-expanded", toolsOpen ? "true" : "false");
+  syncChrome();
+}
+
+function syncChrome() {
+  toolsStrip.hidden = !(toolsOpen && view === "chat");
+  const hasContent = Boolean(state && (state.messages.length || state.notice));
+  viewport.classList.toggle("has-content", view === "chat" && hasContent);
 }
 
 function updateComposer() {
@@ -171,6 +208,12 @@ function updateComposer() {
   el("chat-status").textContent = generating ? t("generating") : "";
 }
 
+// A launcher-style box never strands itself on top: it leaves with focus
+// unless a reply is streaming or the model form is being edited.
+function isPristine() {
+  return view !== "model" && !state?.generating;
+}
+
 function render(next) {
   if (!next || (state && next.revision <= state.revision)) return;
   const changedSession = next.selectedId !== state?.selectedId;
@@ -180,9 +223,6 @@ function render(next) {
     currentLang = state.lang;
   }
   applyLocaleChrome();
-
-  const selected = state.sessions.find(session => session.id === state.selectedId);
-  el("title").textContent = selected?.title || t("title");
 
   const navKey = JSON.stringify([currentLang, state.selectedId, state.sessions]);
   if (navKey !== sidebarKey) {
@@ -196,13 +236,19 @@ function render(next) {
       button.title = button.textContent;
       if (session.id === state.selectedId) button.setAttribute("aria-current", "true");
       button.addEventListener("click", async () => {
-        setHistoryOpen(false);
+        setView("chat");
         if (await action(() => window.chat.select(session.id))) {
           messageInput.focus();
         }
       });
       return button;
     });
+    if (!buttons.length) {
+      const note = document.createElement("div");
+      note.className = "empty-note";
+      note.textContent = t("noHistory");
+      buttons.push(note);
+    }
     el("sessions").replaceChildren(...buttons);
   }
 
@@ -216,6 +262,7 @@ function render(next) {
         row.textContent = message.text;
         return row;
       }
+      if (message.status === "streaming") row.classList.add("streaming");
       const body = document.createElement("div");
       body.className = "markdown";
       body.innerHTML = message.html;
@@ -232,14 +279,14 @@ function render(next) {
   }
 
   const configured = Boolean(state.model.baseUrl && state.model.model);
-  el("empty").hidden = configured || state.messages.length > 0;
-  el("model-dot").classList.toggle("is-ready", configured);
-  el("model-label").textContent = configured ? state.model.model : t("connectModel");
+  el("setup").hidden = configured;
+  el("model-label").textContent = configured ? state.model.model : t("modelLabel");
   el("model-settings").title = configured
     ? `${state.model.model} · ${t("editModelTitle")}`
     : t("editModelTitle");
   showError(el("chat-error"), state.notice);
   updateComposer();
+  syncChrome();
   if (follow) viewport.scrollTop = viewport.scrollHeight;
   if (settingsRequested) showSettings();
 }
@@ -253,6 +300,7 @@ async function action(run, errorTarget = el("chat-error")) {
     const result = await run();
     if (result.error) {
       showError(errorTarget, result.error);
+      syncChrome();
       return false;
     }
     render(result.state);
@@ -272,7 +320,6 @@ function showSettings() {
     return;
   }
   settingsRequested = false;
-  setHistoryOpen(false);
   el("base-url").value = state.model.baseUrl;
   el("model-id").value = state.model.model;
   el("api-key").value = "";
@@ -282,7 +329,8 @@ function showSettings() {
   el("clear-key-row").hidden = !state.model.hasKey;
   el("system-prompt").value = state.model.systemPrompt;
   showError(el("settings-error"));
-  if (!settings.open) settings.showModal();
+  setToolsOpen(false);
+  setView("model");
   el("base-url").focus();
 }
 
@@ -297,27 +345,31 @@ async function submitMessage() {
   }
 }
 
-toggleHistoryBtn.addEventListener("click", (event) => {
-  event.stopPropagation();
-  setHistoryOpen(!historyOpen);
-});
+function newConversation() {
+  setView("chat");
+  setToolsOpen(false);
+  void action(() => window.chat.create()).then((ok) => {
+    if (ok) messageInput.focus();
+  });
+}
 
-document.addEventListener("click", (event) => {
-  if (!historyOpen) return;
-  if (historyDrawer.contains(event.target) || toggleHistoryBtn.contains(event.target)) return;
-  setHistoryOpen(false);
-});
+function closeSubview() {
+  setView("chat");
+  messageInput.focus();
+}
 
-el("new-chat").addEventListener("click", async () => {
-  setHistoryOpen(false);
-  if (await action(() => window.chat.create())) {
-    messageInput.focus();
-  }
+moreBtn.addEventListener("click", () => {
+  if (view !== "chat") setView("chat");
+  setToolsOpen(!toolsOpen);
 });
-
+toggleHistoryBtn.addEventListener("click", () => {
+  setToolsOpen(false);
+  setView("history");
+});
+el("new-chat").addEventListener("click", newConversation);
 el("configure").addEventListener("click", showSettings);
 el("model-settings").addEventListener("click", showSettings);
-el("cancel-settings").addEventListener("click", () => settings.close());
+el("cancel-settings").addEventListener("click", closeSubview);
 el("stop").addEventListener("click", () => void action(() => window.chat.stop()));
 
 el("composer").addEventListener("submit", event => {
@@ -338,15 +390,14 @@ messageInput.addEventListener("keydown", event => {
 });
 
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && historyOpen) {
-    setHistoryOpen(false);
-    messageInput.focus();
-  } else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "n" && !settings.open) {
+  if (event.key === "Escape" && !event.isComposing) {
     event.preventDefault();
-    setHistoryOpen(false);
-    void action(() => window.chat.create()).then((ok) => {
-      if (ok) messageInput.focus();
-    });
+    if (view !== "chat") closeSubview();
+    else if (toolsOpen) { setToolsOpen(false); messageInput.focus(); }
+    else if (typeof window.chat.dismiss === "function") window.chat.dismiss();
+  } else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "n" && view !== "model") {
+    event.preventDefault();
+    newConversation();
   }
 });
 
@@ -359,10 +410,7 @@ el("model-form").addEventListener("submit", async event => {
     clearKey: el("clear-key").checked,
     systemPrompt: el("system-prompt").value,
   }), el("settings-error"));
-  if (ok) {
-    settings.close();
-    messageInput.focus();
-  }
+  if (ok) closeSubview();
 });
 
 transcript.addEventListener("click", event => {
@@ -372,15 +420,20 @@ transcript.addEventListener("click", event => {
   void window.chat.openLink(link.href);
 });
 
+// The main process hides the box when focus leaves it (see isPristine).
+window.addEventListener("blur", () => {
+  if (isPristine() && typeof window.chat.blurred === "function") window.chat.blurred();
+});
+
 window.chat.onChanged(render);
 window.chat.onOpenModelSettings(showSettings);
 if (typeof window.chat.onFocusInput === "function") {
   window.chat.onFocusInput(() => {
-    if (!settings.open) messageInput.focus();
+    if (view !== "model") messageInput.focus();
   });
 }
 
 applyLocaleChrome();
 void action(() => window.chat.get()).then((ok) => {
-  if (ok && !settings.open) messageInput.focus();
+  if (ok && view !== "model") messageInput.focus();
 });

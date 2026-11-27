@@ -4677,7 +4677,7 @@ function showResumeInput(t) {
 }
 
 const chatWindow = require("./chat-window").createChatWindow({
-  app, BrowserWindow, ipcMain, nativeTheme, safeStorage, shell,
+  app, BrowserWindow, ipcMain, nativeTheme, safeStorage, shell, screen,
   getLang: () => lang,
 });
 app.on("before-quit", chatWindow.stop);

@@ -2,86 +2,62 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Character OS</title>
+  <link rel="stylesheet" href="./ui-tokens.css">
   <link rel="stylesheet" href="./chat.css">
+  <script src="./ui-platform.js"></script>
   <script src="./chat-renderer.js" defer></script>
 </head>
 <body>
-  <div class="shell">
-    <header class="topbar">
-      <div class="topbar-left">
-        <button type="button" id="toggle-history" class="icon-btn" aria-expanded="false" aria-controls="history-drawer">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
-            <path d="M3 3v5h5"></path>
-            <path d="M12 7v5l3.5 2"></path>
-          </svg>
+  <div class="cmd" id="cmd" data-view="chat">
+    <form id="composer" class="bar">
+      <span class="mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.2"></circle><circle cx="14.4" cy="10.2" r="2.1" fill="currentColor" stroke="none"></circle></svg>
+      </span>
+      <textarea id="message" rows="1" maxlength="32000" spellcheck="false"></textarea>
+      <span id="chat-status" class="sr" role="status"></span>
+      <div class="trail">
+        <button type="button" id="stop" class="round stop" hidden>
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"></rect></svg>
         </button>
-        <button type="button" id="new-chat" class="ghost-btn">
-          <span aria-hidden="true">+</span>
-          <span id="new-chat-label">New</span>
+        <button type="submit" id="send" class="round send" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"></path><path d="m5 12 7-7 7 7"></path></svg>
         </button>
-        <h1 id="title">Command</h1>
+        <button type="button" id="more" class="ghost" aria-expanded="false" aria-controls="tools">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5.5" cy="12" r="1.6"></circle><circle cx="12" cy="12" r="1.6"></circle><circle cx="18.5" cy="12" r="1.6"></circle></svg>
+        </button>
       </div>
+    </form>
 
-      <button type="button" id="model-settings" class="model-pill">
-        <span id="model-dot" class="model-dot"></span>
-        <span id="model-label">Model</span>
-      </button>
-    </header>
-
-    <aside id="history-drawer" class="history-drawer" hidden>
-      <div class="drawer-head">
-        <span id="drawer-title">Recent</span>
-      </div>
-      <nav id="sessions" class="sessions" aria-label="History"></nav>
-    </aside>
-
-    <div class="viewport" id="viewport">
-      <div class="transcript" id="transcript" aria-label="Messages"></div>
-      <section id="empty" class="empty" hidden>
-        <p id="setup-message" class="setup-note"></p>
-        <button type="button" id="configure" class="secondary"></button>
-      </section>
+    <div id="setup" class="setup" hidden>
+      <span id="setup-message"></span>
+      <button type="button" id="configure" class="link"></button>
     </div>
 
-    <form id="composer" class="composer">
-      <div class="compose-box">
-        <textarea id="message" rows="1" maxlength="32000"></textarea>
-        <div class="compose-actions">
-          <span id="chat-status" role="status"></span>
-          <span id="kbd-hint" class="kbd-hint" aria-hidden="true"></span>
-          <button type="button" id="stop" class="stop-btn" hidden>Stop</button>
-          <button type="submit" id="send" class="send-btn" disabled>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M12 19V5"></path>
-              <path d="m5 12 7-7 7 7"></path>
-            </svg>
-          </button>
-        </div>
-      </div>
+    <div class="body" id="viewport">
+      <div class="transcript" id="transcript" aria-label="Messages"></div>
       <p class="error" id="chat-error" role="alert" hidden></p>
-    </form>
-  </div>
+    </div>
 
-  <dialog id="settings">
-    <form id="model-form">
-      <header class="settings-heading">
-        <h2 id="modal-title">Model Settings</h2>
-      </header>
+    <nav id="history" class="history" hidden aria-label="History">
+      <div class="section-label" id="drawer-title">Recent</div>
+      <div id="sessions" class="sessions"></div>
+    </nav>
+
+    <form id="model-form" class="sheet" hidden>
       <label><span id="lbl-base-url">Base URL</span>
-        <input id="base-url" type="url" placeholder="https://api.openai.com/v1" maxlength="2048" required>
+        <input id="base-url" type="url" placeholder="https://api.openai.com/v1" maxlength="2048" required spellcheck="false" autocomplete="off">
       </label>
       <label><span id="lbl-model-id">Model ID</span>
-        <input id="model-id" placeholder="gpt-4.1-mini" maxlength="512" required>
+        <input id="model-id" placeholder="gpt-4.1-mini" maxlength="512" required spellcheck="false" autocomplete="off">
       </label>
       <label><span id="lbl-api-key">API Key</span>
-        <input id="api-key" type="password" maxlength="4096" autocomplete="off">
+        <input id="api-key" type="password" maxlength="4096" autocomplete="off" spellcheck="false">
       </label>
       <p class="hint" id="key-hint"></p>
-      <label class="toggle" id="clear-key-row" hidden>
+      <label class="check" id="clear-key-row" hidden>
         <input id="clear-key" type="checkbox">
         <span id="lbl-clear-key">Remove saved key</span>
       </label>
@@ -89,11 +65,17 @@
         <textarea id="system-prompt" rows="3" maxlength="16000"></textarea>
       </label>
       <p class="error" id="settings-error" role="alert" hidden></p>
-      <footer class="settings-actions">
-        <button type="button" id="cancel-settings" class="secondary">Cancel</button>
-        <button type="submit" id="save-model" class="primary">Save</button>
+      <footer class="sheet-actions">
+        <button type="button" id="cancel-settings" class="ui-btn quiet">Cancel</button>
+        <button type="submit" id="save-model" class="ui-btn primary">Save</button>
       </footer>
     </form>
-  </dialog>
+
+    <div id="tools" class="tools" hidden>
+      <button type="button" id="new-chat" class="tool"><span id="new-chat-label">New</span><kbd class="ui-kbd">⌘N</kbd></button>
+      <button type="button" id="toggle-history" class="tool"><span id="history-label">History</span></button>
+      <button type="button" id="model-settings" class="tool"><span id="model-label">Model</span></button>
+    </div>
+  </div>
 </body>
 </html>
