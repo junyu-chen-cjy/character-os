@@ -453,14 +453,64 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
     } catch {}
   }
 
+  let pendingContentHeight = 0;
+
   function resizeTo(height) {
     if (!win || win.isDestroyed() || !Number.isFinite(height)) return;
     const next = Math.round(Math.min(CMD_MAX_HEIGHT, Math.max(CMD_MIN_HEIGHT, height)));
+    pendingContentHeight = next;
+    if (typeof win.isVisible === "function" && !win.isVisible()) return;
     const [width, current] = win.getContentSize();
     if (width !== CMD_WIDTH || current !== next) win.setContentSize(CMD_WIDTH, next);
   }
 
+  let blurHideTimer = null;
+  let isOpening = false;
+  let openedAt = 0;
+
+  function clearBlurHideTimer() {
+    if (!blurHideTimer) return;
+    clearTimeout(blurHideTimer);
+    blurHideTimer = null;
+  }
+
+  function focusChatInput(targetWin) {
+    if (!targetWin || targetWin.isDestroyed()) return;
+    if (typeof targetWin.isVisible === "function" && !targetWin.isVisible()) return;
+    try {
+      if (typeof targetWin.setIgnoreMouseEvents === "function") targetWin.setIgnoreMouseEvents(false);
+      if (typeof targetWin.setFocusable === "function") targetWin.setFocusable(true);
+      if (process.platform === "darwin" && app && typeof app.focus === "function") {
+        app.focus({ steal: true });
+      }
+      if (typeof targetWin.focus === "function") targetWin.focus();
+      if (targetWin.webContents && !targetWin.webContents.isDestroyed()) {
+        if (typeof targetWin.webContents.focus === "function") targetWin.webContents.focus();
+        if (typeof targetWin.webContents.send === "function") {
+          targetWin.webContents.send("chat:focus-input");
+        }
+      }
+    } catch {}
+  }
+
+  function scheduleBlurHide(targetWin) {
+    if (!targetWin || targetWin.isDestroyed() || win !== targetWin) return;
+    if (isOpening || Date.now() - openedAt <= 320) return;
+    clearBlurHideTimer();
+    // Wait a tiny beat before hiding so macOS Space transitions, IME popups,
+    // or immediate re-activation never spuriously dismiss the launcher.
+    blurHideTimer = setTimeout(() => {
+      blurHideTimer = null;
+      if (!targetWin || targetWin.isDestroyed() || win !== targetWin) return;
+      if (isOpening || Date.now() - openedAt <= 320) return;
+      if (typeof targetWin.isFocused === "function" && targetWin.isFocused()) return;
+      hide();
+    }, 45);
+    if (typeof blurHideTimer.unref === "function") blurHideTimer.unref();
+  }
+
   function hide() {
+    clearBlurHideTimer();
     if (!win || win.isDestroyed()) return;
     if (typeof win.isVisible === "function" && !win.isVisible()) return;
     try {
@@ -475,33 +525,56 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
     ipcMain.on("chat:resize", (event, height) => { if (fromWindow(event)) resizeTo(Number(height)); });
     ipcMain.on("chat:dismiss", (event) => { if (fromWindow(event)) hide(); });
     ipcMain.on("chat:blurred", (event) => {
-      // The box behaves like a launcher and leaves when focus does.
-      if (fromWindow(event) && Date.now() - openedAt > 250) hide();
+      // Rely on native window blur with focus re-verification instead of hiding
+      // immediately on renderer blur (which can race with IME or Space transitions).
+      if (fromWindow(event) && win) scheduleBlurHide(win);
     });
   }
 
-  let openedAt = 0;
   function open() {
     openedAt = Date.now();
+    clearBlurHideTimer();
     if (win && !win.isDestroyed()) {
-      // Detach from any previous Space before showing so macOS opens the
-      // launcher cleanly in the active Space (ordinary or fullscreen) without
-      // using CanJoinAllSpaces (which causes flashing during 4-finger Space swipes).
-      if (process.platform === "darwin") {
-        if (typeof win.isVisible === "function" && win.isVisible() && typeof win.hide === "function") {
-          win.hide();
+      isOpening = true;
+      try {
+        // Detach from any previous Space before showing so macOS opens the
+        // launcher cleanly in the active Space (ordinary or fullscreen) without
+        // using CanJoinAllSpaces (which causes flashing during 4-finger Space swipes).
+        if (process.platform === "darwin") {
+          if (typeof win.isVisible === "function" && win.isVisible() && typeof win.hide === "function") {
+            win.hide();
+          }
+          applyActiveSpaceWindowBehavior(win);
         }
-        applyActiveSpaceWindowBehavior(win);
+        if (pendingContentHeight >= CMD_MIN_HEIGHT) {
+          const [width, current] = win.getContentSize();
+          if (width !== CMD_WIDTH || current !== pendingContentHeight) {
+            win.setContentSize(CMD_WIDTH, pendingContentHeight);
+          }
+        }
+        placeNearTop();
+        if (typeof win.setTitle === "function") win.setTitle(resolveWindowTitle());
+        if (typeof win.setIgnoreMouseEvents === "function") win.setIgnoreMouseEvents(false);
+        if (typeof win.setFocusable === "function") win.setFocusable(true);
+        if (typeof win.setAlwaysOnTop === "function") win.setAlwaysOnTop(true, "floating");
+        if (typeof win.isMinimized === "function" && win.isMinimized()) win.restore();
+        if (process.platform === "darwin" && app && typeof app.focus === "function") {
+          try { app.focus({ steal: true }); } catch {}
+        }
+        if (typeof win.show === "function") win.show();
+        focusChatInput(win);
+      } finally {
+        isOpening = false;
       }
-      placeNearTop();
-      if (typeof win.setTitle === "function") win.setTitle(resolveWindowTitle());
-      if (typeof win.setAlwaysOnTop === "function") win.setAlwaysOnTop(true, "floating");
-      if (typeof win.isMinimized === "function" && win.isMinimized()) win.restore();
-      if (typeof win.show === "function") win.show();
-      if (typeof win.focus === "function") win.focus();
-      if (win.webContents && typeof win.webContents.send === "function") {
-        win.webContents.send("chat:focus-input");
-      }
+      // Second focus pass after macOS finishes ordering the window into the active Space
+      // guarantees webContents + textarea hold keyboard focus and I-beam tracking.
+      const targetWin = win;
+      const refocusTimer = setTimeout(() => {
+        if (win === targetWin && !targetWin.isDestroyed() && (typeof targetWin.isVisible !== "function" || targetWin.isVisible())) {
+          focusChatInput(targetWin);
+        }
+      }, 45);
+      if (typeof refocusTimer.unref === "function") refocusTimer.unref();
       return;
     }
     const window = new BrowserWindow({
@@ -509,6 +582,7 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
       width: CMD_WIDTH, height: CMD_MIN_HEIGHT, useContentSize: true,
       show: false,
       frame: false,
+      focusable: true,
       resizable: false,
       maximizable: false,
       minimizable: false,
@@ -535,12 +609,42 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.webContents.on("will-navigate", event => event.preventDefault());
     window.once("ready-to-show", () => {
-      window.show();
-      if (typeof window.focus === "function") window.focus();
+      if (win !== window || window.isDestroyed()) return;
+      isOpening = true;
+      openedAt = Date.now();
+      try {
+        if (process.platform === "darwin" && app && typeof app.focus === "function") {
+          try { app.focus({ steal: true }); } catch {}
+        }
+        window.show();
+        focusChatInput(window);
+      } finally {
+        isOpening = false;
+      }
+      const refocusTimer = setTimeout(() => {
+        if (win === window && !window.isDestroyed() && (typeof window.isVisible !== "function" || window.isVisible())) {
+          focusChatInput(window);
+        }
+      }, 45);
+      if (typeof refocusTimer.unref === "function") refocusTimer.unref();
     });
-    window.webContents.once("did-finish-load", showRequestedModelSettings);
+    window.webContents.once("did-finish-load", () => {
+      showRequestedModelSettings();
+      if (win === window && !window.isDestroyed() && (typeof window.isVisible !== "function" || window.isVisible())) {
+        focusChatInput(window);
+      }
+    });
+    window.on("focus", () => {
+      if (win !== window || window.isDestroyed()) return;
+      clearBlurHideTimer();
+      try {
+        if (window.webContents && !window.webContents.isDestroyed()) {
+          if (typeof window.webContents.focus === "function") window.webContents.focus();
+        }
+      } catch {}
+    });
     window.on("blur", () => {
-      if (win === window && Date.now() - openedAt > 250) hide();
+      scheduleBlurHide(window);
     });
     window.on("close", (event) => {
       if (win === window && !isQuitting()) {
@@ -549,6 +653,7 @@ function createChatWindow({ app, BrowserWindow, ipcMain, nativeTheme, safeStorag
       }
     });
     window.on("closed", () => {
+      clearBlurHideTimer();
       win = null;
       stop();
     });

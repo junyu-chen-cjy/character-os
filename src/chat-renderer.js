@@ -53,6 +53,7 @@ const STRINGS = {
     stepFailed: "Failed",
     stepOpenBtn: "Open",
     stepToolsUnsupported: "This model does not support tool calling; switched to plain chat.",
+    scrollToBottomTitle: "Scroll to bottom",
   },
   zh: {
     windowTitle: "Character OS · 指令",
@@ -106,6 +107,7 @@ const STRINGS = {
     stepFailed: "执行失败",
     stepOpenBtn: "打开",
     stepToolsUnsupported: "当前模型不支持工具调用，已降级为普通对话。",
+    scrollToBottomTitle: "回到底部",
   },
   "zh-TW": {
     windowTitle: "Character OS · 指令",
@@ -159,6 +161,7 @@ const STRINGS = {
     stepFailed: "執行失敗",
     stepOpenBtn: "開啟",
     stepToolsUnsupported: "目前模型不支援工具呼叫，已降級為一般對話。",
+    scrollToBottomTitle: "捲動至底部",
   },
 };
 
@@ -166,6 +169,8 @@ const el = id => document.getElementById(id);
 const messageInput = el("message");
 const transcript = el("transcript");
 const viewport = el("viewport");
+const bodyWrap = el("body-wrap");
+const scrollBottomBtn = el("scroll-bottom");
 const cmd = el("cmd");
 const historyPanel = el("history");
 const modelForm = el("model-form");
@@ -173,15 +178,23 @@ const toolsStrip = el("tools");
 const moreBtn = el("more");
 const toggleHistoryBtn = el("toggle-history");
 
+const BOTTOM_THRESHOLD_PX = 36;
+
 let state;
 let currentLang = "en";
 let settingsRequested = false;
 let pending = false;
 let sidebarKey = "";
-let transcriptKey = "";
+let renderedSessionId = "";
+let renderedMessages = [];
 let view = "chat";
 let toolsOpen = false;
 let lastReportedHeight = 0;
+let autoFollow = true;
+let isProgrammaticScroll = false;
+let scrollRafId = null;
+let imeComposing = false;
+let lastCompositionEndAt = 0;
 
 function t(key) {
   const dict = STRINGS[currentLang] || STRINGS.en;
@@ -216,6 +229,50 @@ function applyLocaleChrome() {
   el("system-prompt").placeholder = t("systemPromptPlaceholder");
   el("cancel-settings").textContent = t("cancel");
   el("save-model").textContent = t("save");
+  if (scrollBottomBtn) {
+    scrollBottomBtn.title = t("scrollToBottomTitle");
+    scrollBottomBtn.setAttribute("aria-label", t("scrollToBottomTitle"));
+  }
+}
+
+function getDistanceFromBottom() {
+  return Math.max(0, viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop);
+}
+
+function updateScrollBottomButton() {
+  if (!scrollBottomBtn) return;
+  const hasContent = Boolean(state && (state.messages.length || state.notice));
+  const scrollable = viewport.scrollHeight > viewport.clientHeight + BOTTOM_THRESHOLD_PX;
+  scrollBottomBtn.hidden = view !== "chat" || !hasContent || !scrollable || autoFollow;
+}
+
+function applyScrollToBottomNow() {
+  scrollRafId = null;
+  if (!autoFollow || view !== "chat") {
+    updateScrollBottomButton();
+    return;
+  }
+  const targetTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
+  if (Math.abs(viewport.scrollTop - targetTop) > 1) {
+    isProgrammaticScroll = true;
+    viewport.scrollTop = targetTop;
+    requestAnimationFrame(() => {
+      isProgrammaticScroll = false;
+      updateScrollBottomButton();
+    });
+  } else {
+    updateScrollBottomButton();
+  }
+}
+
+function scheduleScrollToBottom({ force = false } = {}) {
+  if (force) autoFollow = true;
+  if (!autoFollow) {
+    updateScrollBottomButton();
+    return;
+  }
+  if (scrollRafId !== null) return;
+  scrollRafId = requestAnimationFrame(applyScrollToBottomNow);
 }
 
 function showError(target, message = "") {
@@ -235,8 +292,18 @@ function reportHeight() {
     lastReportedHeight = height;
     window.chat.resize(height);
   }
+  if (autoFollow) scheduleScrollToBottom();
+  else updateScrollBottomButton();
 }
 new ResizeObserver(reportHeight).observe(cmd);
+new ResizeObserver(() => {
+  if (autoFollow) scheduleScrollToBottom();
+  else updateScrollBottomButton();
+}).observe(transcript);
+new ResizeObserver(() => {
+  if (autoFollow) scheduleScrollToBottom();
+  else updateScrollBottomButton();
+}).observe(viewport);
 
 function setView(next) {
   view = next;
@@ -255,7 +322,10 @@ function setToolsOpen(next) {
 function syncChrome() {
   toolsStrip.hidden = !(toolsOpen && view === "chat");
   const hasContent = Boolean(state && (state.messages.length || state.notice));
-  viewport.classList.toggle("has-content", view === "chat" && hasContent);
+  const showBody = view === "chat" && hasContent;
+  viewport.classList.toggle("has-content", showBody);
+  if (bodyWrap) bodyWrap.classList.toggle("has-content", showBody);
+  updateScrollBottomButton();
 }
 
 function updateComposer() {
@@ -404,10 +474,69 @@ function renderStepsBlock(steps) {
   return wrap;
 }
 
+function buildMessageElement(message) {
+  const row = document.createElement("article");
+  row.className = message.role === "assistant" ? "message assistant" : "message user";
+  if (message.role !== "assistant") {
+    row.textContent = message.text;
+    return row;
+  }
+  if (message.status === "streaming") row.classList.add("streaming");
+  if (Array.isArray(message.steps) && message.steps.length) {
+    row.append(renderStepsBlock(message.steps));
+  }
+  const body = document.createElement("div");
+  body.className = "markdown";
+  body.innerHTML = message.html;
+  row.append(body);
+  if (message.detail) {
+    const detail = document.createElement("p");
+    detail.className = message.status === "error" ? "reply-detail error" : "reply-detail";
+    detail.textContent = message.detail;
+    row.append(detail);
+  }
+  return row;
+}
+
+function patchTranscriptMessages(nextSessionId, nextMessages) {
+  const serialized = nextMessages.map((m) => JSON.stringify(m));
+  const sessionSwitched = nextSessionId !== renderedSessionId;
+  const shrunk = serialized.length < renderedMessages.length;
+
+  let firstDiff = 0;
+  if (!sessionSwitched && !shrunk) {
+    while (firstDiff < renderedMessages.length && renderedMessages[firstDiff] === serialized[firstDiff]) {
+      firstDiff += 1;
+    }
+    if (firstDiff === serialized.length) return false;
+  }
+
+  if (sessionSwitched || shrunk || firstDiff === 0) {
+    transcript.replaceChildren(...nextMessages.map(buildMessageElement));
+  } else {
+    // Preserve untouched earlier message DOM nodes so selecting/copying text in
+    // earlier messages is NEVER disrupted by streaming deltas in the latest reply.
+    while (transcript.children.length > firstDiff) {
+      transcript.lastElementChild.remove();
+    }
+    for (let i = firstDiff; i < nextMessages.length; i += 1) {
+      transcript.appendChild(buildMessageElement(nextMessages[i]));
+    }
+  }
+  renderedSessionId = nextSessionId;
+  renderedMessages = serialized;
+  return true;
+}
+
 function render(next) {
   if (!next || (state && next.revision <= state.revision)) return;
   const changedSession = next.selectedId !== state?.selectedId;
-  const follow = changedSession || viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop < 72;
+  const prevMsgCount = state?.messages?.length || 0;
+  const nextMsgCount = next.messages?.length || 0;
+  const userAddedMessage = !changedSession
+    && nextMsgCount > prevMsgCount
+    && next.messages[nextMsgCount - 1]?.role === "user";
+
   state = next;
   if (typeof state.lang === "string" && state.lang) {
     currentLang = state.lang;
@@ -427,8 +556,10 @@ function render(next) {
       if (session.id === state.selectedId) button.setAttribute("aria-current", "true");
       button.addEventListener("click", async () => {
         setView("chat");
+        autoFollow = true;
         if (await action(() => window.chat.select(session.id))) {
           messageInput.focus();
+          scheduleScrollToBottom({ force: true });
         }
       });
       return button;
@@ -442,34 +573,7 @@ function render(next) {
     el("sessions").replaceChildren(...buttons);
   }
 
-  const messageKey = JSON.stringify(state.messages);
-  if (messageKey !== transcriptKey) {
-    transcriptKey = messageKey;
-    const rows = state.messages.map(message => {
-      const row = document.createElement("article");
-      row.className = message.role === "assistant" ? "message assistant" : "message user";
-      if (message.role !== "assistant") {
-        row.textContent = message.text;
-        return row;
-      }
-      if (message.status === "streaming") row.classList.add("streaming");
-      if (Array.isArray(message.steps) && message.steps.length) {
-        row.append(renderStepsBlock(message.steps));
-      }
-      const body = document.createElement("div");
-      body.className = "markdown";
-      body.innerHTML = message.html;
-      row.append(body);
-      if (message.detail) {
-        const detail = document.createElement("p");
-        detail.className = message.status === "error" ? "reply-detail error" : "reply-detail";
-        detail.textContent = message.detail;
-        row.append(detail);
-      }
-      return row;
-    });
-    transcript.replaceChildren(...rows);
-  }
+  const messagesChanged = patchTranscriptMessages(state.selectedId || "", state.messages || []);
 
   const configured = Boolean(state.model.baseUrl && state.model.model);
   el("setup").hidden = configured;
@@ -480,7 +584,13 @@ function render(next) {
   showError(el("chat-error"), state.notice);
   updateComposer();
   syncChrome();
-  if (follow) viewport.scrollTop = viewport.scrollHeight;
+  if (changedSession || userAddedMessage) {
+    scheduleScrollToBottom({ force: true });
+  } else if (messagesChanged && autoFollow) {
+    scheduleScrollToBottom();
+  } else {
+    updateScrollBottomButton();
+  }
   if (settingsRequested) showSettings();
 }
 
@@ -530,19 +640,25 @@ function showSettings() {
 async function submitMessage() {
   const text = messageInput.value;
   if (!text.trim() || state?.generating) return;
+  autoFollow = true;
   if (await action(() => window.chat.send(text))) {
     messageInput.value = "";
     syncTextareaHeight();
     updateComposer();
     messageInput.focus();
+    scheduleScrollToBottom({ force: true });
   }
 }
 
 function newConversation() {
   setView("chat");
   setToolsOpen(false);
+  autoFollow = true;
   void action(() => window.chat.create()).then((ok) => {
-    if (ok) messageInput.focus();
+    if (ok) {
+      messageInput.focus();
+      scheduleScrollToBottom({ force: true });
+    }
   });
 }
 
@@ -573,20 +689,67 @@ el("composer").addEventListener("submit", event => {
   void submitMessage();
 });
 
+messageInput.addEventListener("compositionstart", () => {
+  imeComposing = true;
+});
+messageInput.addEventListener("compositionend", () => {
+  imeComposing = false;
+  lastCompositionEndAt = Date.now();
+  syncTextareaHeight();
+  updateComposer();
+});
+
 messageInput.addEventListener("input", () => {
   syncTextareaHeight();
   updateComposer();
 });
 
 messageInput.addEventListener("keydown", event => {
-  if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+  if (event.key === "Enter" && !event.shiftKey) {
+    // Protect macOS Chinese/Japanese IME candidate commit Enter from submitting.
+    if (event.isComposing || imeComposing || event.keyCode === 229 || Date.now() - lastCompositionEndAt < 50) {
+      return;
+    }
     event.preventDefault();
     void submitMessage();
   }
 });
 
+viewport.addEventListener("wheel", (event) => {
+  if (event.deltaY < 0) {
+    autoFollow = false;
+    updateScrollBottomButton();
+  }
+}, { passive: true });
+
+viewport.addEventListener("scroll", () => {
+  if (isProgrammaticScroll) return;
+  autoFollow = getDistanceFromBottom() <= BOTTOM_THRESHOLD_PX;
+  updateScrollBottomButton();
+}, { passive: true });
+
+scrollBottomBtn?.addEventListener("click", () => {
+  scheduleScrollToBottom({ force: true });
+  messageInput.focus();
+});
+
+function hasTranscriptSelection() {
+  const sel = window.getSelection?.();
+  if (!sel || sel.isCollapsed || !sel.rangeCount) return false;
+  const anchor = sel.anchorNode;
+  return Boolean(anchor && transcript.contains(anchor));
+}
+
+function focusComposerSafely() {
+  if (view === "model") return;
+  if (hasTranscriptSelection()) return;
+  if (document.activeElement !== messageInput) {
+    messageInput.focus({ preventScroll: true });
+  }
+}
+
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && !event.isComposing) {
+  if (event.key === "Escape" && !event.isComposing && !imeComposing) {
     event.preventDefault();
     if (view !== "chat") closeSubview();
     else if (toolsOpen) { setToolsOpen(false); messageInput.focus(); }
@@ -622,11 +785,15 @@ window.addEventListener("blur", () => {
   if (typeof window.chat.blurred === "function") window.chat.blurred();
 });
 
+window.addEventListener("focus", () => {
+  focusComposerSafely();
+});
+
 window.chat.onChanged(render);
 window.chat.onOpenModelSettings(showSettings);
 if (typeof window.chat.onFocusInput === "function") {
   window.chat.onFocusInput(() => {
-    if (view !== "model") messageInput.focus();
+    focusComposerSafely();
   });
 }
 

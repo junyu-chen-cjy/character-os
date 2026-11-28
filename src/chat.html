@@ -39,9 +39,14 @@
       <button type="button" id="configure" class="link"></button>
     </div>
 
-    <div class="body" id="viewport">
-      <div class="transcript" id="transcript" aria-label="Messages"></div>
-      <p class="error" id="chat-error" role="alert" hidden></p>
+    <div class="body-wrap" id="body-wrap">
+      <div class="body" id="viewport">
+        <div class="transcript" id="transcript" aria-label="Messages"></div>
+        <p class="error" id="chat-error" role="alert" hidden></p>
+      </div>
+      <button type="button" id="scroll-bottom" class="scroll-bottom" hidden aria-label="Scroll to bottom">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"></path><path d="m19 12-7 7-7-7"></path></svg>
+      </button>
     </div>
 
     <nav id="history" class="history" hidden aria-label="History">

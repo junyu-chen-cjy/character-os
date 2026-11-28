@@ -19,7 +19,9 @@ const NSWindowCollectionBehaviorPrimary = 1 << 16;
 const NSWindowCollectionBehaviorAuxiliary = 1 << 17;
 const NSWindowCollectionBehaviorCanJoinAllApplications = 1 << 18;
 const NSWindowAnimationBehaviorNone = 2;
+const NSNormalWindowLevel = 0;
 const CGAssistiveTechHighWindowLevel = 1500;
+const CGSSpaceTypeFullscreen = 4;
 
 let objc = null;
 let selWindow = null;
@@ -29,13 +31,18 @@ let selSetAnimationBehavior = null;
 let selSetCanHide = null;
 let selSetHidesOnDeactivate = null;
 let selSetMovable = null;
+let selLevel = null;
 let selSetLevel = null;
+let selIsKeyWindow = null;
+let selSharedApplication = null;
+let selIsActive = null;
 let selWindowNumber = null;
 let selNumberWithInt = null;
 let selArrayWithObject = null;
 let warnedApplyFailure = false;
 let warnedSkyLightFailure = false;
 let skyLight = null;
+let skyLightSpaceQueryApi = undefined;
 
 function initObjc() {
   if (objc) return objc;
@@ -46,9 +53,11 @@ function initObjc() {
   const sel_registerName = libobjc.func("void *sel_registerName(const char *name)");
 
   objc = {
+    NSApplication: objc_getClass("NSApplication"),
     NSNumber: objc_getClass("NSNumber"),
     NSArray: objc_getClass("NSArray"),
     msgPtr: libobjc.func("objc_msgSend", "void *", ["void *", "void *"]),
+    msgBool: libobjc.func("objc_msgSend", "bool", ["void *", "void *"]),
     msgULong: libobjc.func("objc_msgSend", "ulong", ["void *", "void *"]),
     msgLong: libobjc.func("objc_msgSend", "long", ["void *", "void *"]),
     msgPtrInt: libobjc.func("objc_msgSend", "void *", ["void *", "void *", "int"]),
@@ -65,11 +74,115 @@ function initObjc() {
   selSetCanHide = sel_registerName("setCanHide:");
   selSetHidesOnDeactivate = sel_registerName("setHidesOnDeactivate:");
   selSetMovable = sel_registerName("setMovable:");
+  selLevel = sel_registerName("level");
   selSetLevel = sel_registerName("setLevel:");
+  selIsKeyWindow = sel_registerName("isKeyWindow");
+  selSharedApplication = sel_registerName("sharedApplication");
+  selIsActive = sel_registerName("isActive");
   selWindowNumber = sel_registerName("windowNumber");
   selNumberWithInt = sel_registerName("numberWithInt:");
   selArrayWithObject = sel_registerName("arrayWithObject:");
   return objc;
+}
+
+function initSkyLightSpaceQueryApi() {
+  if (!isMac) return null;
+  if (skyLightSpaceQueryApi !== undefined) return skyLightSpaceQueryApi;
+  try {
+    const koffi = require("koffi");
+    const lib = koffi.load("/System/Library/PrivateFrameworks/SkyLight.framework/Versions/A/SkyLight");
+    const SLSMainConnectionID = lib.func("SLSMainConnectionID", "int", []);
+    const SLSGetActiveSpace = lib.func("SLSGetActiveSpace", "uint64", ["int"]);
+    const SLSSpaceGetType = lib.func("SLSSpaceGetType", "int", ["int", "uint64"]);
+    skyLightSpaceQueryApi = {
+      connection: SLSMainConnectionID(),
+      SLSGetActiveSpace,
+      SLSSpaceGetType,
+    };
+  } catch {
+    skyLightSpaceQueryApi = null;
+  }
+  return skyLightSpaceQueryApi;
+}
+
+function isActiveMacSpaceFullscreen() {
+  if (!isMac) return false;
+  try {
+    const api = initSkyLightSpaceQueryApi();
+    if (!api) return false;
+    const activeSpace = BigInt(api.SLSGetActiveSpace(api.connection));
+    if (!activeSpace) return false;
+    return Number(api.SLSSpaceGetType(api.connection, activeSpace)) === CGSSpaceTypeFullscreen;
+  } catch {
+    return false;
+  }
+}
+
+function isMacAppActive() {
+  if (!isMac) return false;
+  try {
+    const { NSApplication, msgPtr, msgBool } = initObjc();
+    const nsApp = msgPtr(NSApplication, selSharedApplication);
+    if (!nsApp) return false;
+    return Boolean(msgBool(nsApp, selIsActive));
+  } catch {
+    return false;
+  }
+}
+
+function getNativeWindowLevel(browserWindow) {
+  if (!isMac || !browserWindow || (typeof browserWindow.isDestroyed === "function" && browserWindow.isDestroyed())) {
+    return null;
+  }
+  try {
+    if (typeof browserWindow.getNativeWindowHandle !== "function") return null;
+    const { msgPtr, msgLong } = initObjc();
+    const nsView = nativeHandleToPointer(browserWindow.getNativeWindowHandle());
+    if (!nsView) return null;
+    const nsWindow = msgPtr(nsView, selWindow);
+    if (!nsWindow) return null;
+    return Number(msgLong(nsWindow, selLevel));
+  } catch {
+    return null;
+  }
+}
+
+function isNativeKeyWindow(browserWindow) {
+  if (!isMac || !browserWindow || (typeof browserWindow.isDestroyed === "function" && browserWindow.isDestroyed())) {
+    return false;
+  }
+  try {
+    if (typeof browserWindow.getNativeWindowHandle !== "function") return false;
+    const { msgPtr, msgBool } = initObjc();
+    const nsView = nativeHandleToPointer(browserWindow.getNativeWindowHandle());
+    if (!nsView) return false;
+    const nsWindow = msgPtr(nsView, selWindow);
+    if (!nsWindow) return false;
+    return Boolean(msgBool(nsWindow, selIsKeyWindow));
+  } catch {
+    return false;
+  }
+}
+
+function ensureNormalMacWindowLevel(browserWindow) {
+  if (!isMac || !browserWindow || (typeof browserWindow.isDestroyed === "function" && browserWindow.isDestroyed())) {
+    return false;
+  }
+  try {
+    if (typeof browserWindow.getNativeWindowHandle !== "function") return false;
+    const { msgPtr, msgLong, msgVoidLong } = initObjc();
+    const nsView = nativeHandleToPointer(browserWindow.getNativeWindowHandle());
+    if (!nsView) return false;
+    const nsWindow = msgPtr(nsView, selWindow);
+    if (!nsWindow) return false;
+    const level = Number(msgLong(nsWindow, selLevel));
+    if (level !== NSNormalWindowLevel) {
+      msgVoidLong(nsWindow, selSetLevel, NSNormalWindowLevel);
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function initSkyLight() {
@@ -374,12 +487,20 @@ function moveWindowToWorkAreaIfNeeded(win, workArea) {
   }
 }
 
-function summonMacWindowToActiveSpace(win, { getActiveWorkArea, skipHideDetach = false } = {}) {
-  if (!isMac || !win || (typeof win.isDestroyed === "function" && win.isDestroyed())) return false;
+function summonMacWindowToActiveSpace(win, {
+  getActiveWorkArea,
+  skipHideDetach = false,
+  app = null,
+  isFullscreenSpaceFn = isActiveMacSpaceFullscreen,
+} = {}) {
+  if (!isMac || !win || (typeof win.isDestroyed === "function" && win.isDestroyed())) {
+    return { ok: false, inFullscreenSpace: false };
+  }
   try {
     if (typeof win.setAlwaysOnTop === "function" && typeof win.isAlwaysOnTop === "function" && win.isAlwaysOnTop()) {
       win.setAlwaysOnTop(false);
     }
+    ensureNormalMacWindowLevel(win);
     if (typeof win.isMinimized === "function" && win.isMinimized() && typeof win.restore === "function") {
       win.restore();
     }
@@ -392,7 +513,11 @@ function summonMacWindowToActiveSpace(win, { getActiveWorkArea, skipHideDetach =
       const activeArea = getActiveWorkArea();
       if (activeArea) moveWindowToWorkAreaIfNeeded(win, activeArea);
     }
+    const inFullscreenSpace = typeof isFullscreenSpaceFn === "function" ? Boolean(isFullscreenSpaceFn()) : false;
     const appliedNative = applyActiveSpaceWindowBehavior(win);
+    if (app && typeof app.focus === "function") {
+      try { app.focus({ steal: true }); } catch {}
+    }
     if (!appliedNative && typeof win.setVisibleOnAllWorkspaces === "function") {
       win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
       if (typeof win.show === "function") win.show();
@@ -402,12 +527,13 @@ function summonMacWindowToActiveSpace(win, { getActiveWorkArea, skipHideDetach =
         }
       }, 150);
       if (timer && typeof timer.unref === "function") timer.unref();
-      return true;
+      return { ok: true, inFullscreenSpace };
     }
     if (typeof win.show === "function") win.show();
-    return true;
+    ensureNormalMacWindowLevel(win);
+    return { ok: true, inFullscreenSpace };
   } catch {
-    return false;
+    return { ok: false, inFullscreenSpace: false };
   }
 }
 
@@ -415,6 +541,11 @@ module.exports = {
   applyStationaryCollectionBehavior,
   deDelegateWindowFromStationarySpace,
   applyActiveSpaceWindowBehavior,
+  ensureNormalMacWindowLevel,
+  getNativeWindowLevel,
+  isNativeKeyWindow,
+  isActiveMacSpaceFullscreen,
+  isMacAppActive,
   moveWindowToWorkAreaIfNeeded,
   summonMacWindowToActiveSpace,
   __test: {

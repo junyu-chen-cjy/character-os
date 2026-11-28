@@ -11,6 +11,8 @@ const {
 const { clampTextScale, scaleWidth, scaleHeight, applyZoomToWindow } = require("./text-scale");
 const {
   applyActiveSpaceWindowBehavior,
+  isActiveMacSpaceFullscreen,
+  isMacAppActive,
   summonMacWindowToActiveSpace,
 } = require("./mac-window");
 
@@ -108,6 +110,21 @@ function createSettingsWindowRuntime(options = {}) {
   let showPendingSettingsWindow = null;
   let pendingRequestedTab = null;
   let settingsRendererLoaded = false;
+  let summonedInFullscreenSpace = false;
+  let isSummoningWindow = false;
+  let fullscreenBlurTimer = null;
+  const isFullscreenSpaceFn = typeof options.isActiveMacSpaceFullscreen === "function"
+    ? options.isActiveMacSpaceFullscreen
+    : isActiveMacSpaceFullscreen;
+  const isAppActiveFn = typeof options.isMacAppActive === "function"
+    ? options.isMacAppActive
+    : isMacAppActive;
+
+  function clearFullscreenBlurTimer() {
+    if (!fullscreenBlurTimer) return;
+    clearScheduled(fullscreenBlurTimer);
+    fullscreenBlurTimer = null;
+  }
 
   const ALLOWED_TABS = new Set(["general", "models", "agents", "data", "character"]);
 
@@ -408,10 +425,19 @@ function createSettingsWindowRuntime(options = {}) {
       win.restore();
     }
     if (isMac) {
-      summonMacWindowToActiveSpace(win, {
-        getActiveWorkArea: options.getActiveWorkArea,
-        skipHideDetach: showOptions.isInitialShow === true,
-      });
+      isSummoningWindow = true;
+      clearFullscreenBlurTimer();
+      try {
+        const res = summonMacWindowToActiveSpace(win, {
+          getActiveWorkArea: options.getActiveWorkArea,
+          skipHideDetach: showOptions.isInitialShow === true,
+          app,
+          isFullscreenSpaceFn,
+        });
+        summonedInFullscreenSpace = Boolean(res?.inFullscreenSpace || isFullscreenSpaceFn());
+      } finally {
+        isSummoningWindow = false;
+      }
     } else if (typeof win.show === "function") {
       win.show();
     }
@@ -547,6 +573,28 @@ function createSettingsWindowRuntime(options = {}) {
         scheduleWindowBoundsSave(createdWindow);
       });
       createdWindow.on("resize", () => scheduleWindowBoundsSave(createdWindow));
+      createdWindow.on("focus", () => {
+        if (settingsWindow !== createdWindow) return;
+        clearFullscreenBlurTimer();
+        if (isMac && isFullscreenSpaceFn()) summonedInFullscreenSpace = true;
+      });
+      createdWindow.on("blur", () => {
+        if (settingsWindow !== createdWindow) return;
+        if (!isMac || isSummoningWindow || isAppQuitting()) return;
+        clearFullscreenBlurTimer();
+        fullscreenBlurTimer = scheduleTimer(() => {
+          fullscreenBlurTimer = null;
+          if (settingsWindow !== createdWindow || !isLiveWindow(createdWindow)) return;
+          if (isSummoningWindow || isAppQuitting()) return;
+          if (typeof createdWindow.isVisible === "function" && !createdWindow.isVisible()) return;
+          if (typeof createdWindow.isFocused === "function" && createdWindow.isFocused()) return;
+          const inFullscreen = summonedInFullscreenSpace || isFullscreenSpaceFn();
+          if (!inFullscreen) return;
+          if (isAppActiveFn()) return;
+          summonedInFullscreenSpace = false;
+          if (typeof createdWindow.hide === "function") createdWindow.hide();
+        }, 60);
+      });
       createdWindow.on("minimize", (event) => {
         if (hideOnMinimize && !isAppQuitting()) {
           if (event && typeof event.preventDefault === "function") event.preventDefault();
@@ -587,6 +635,8 @@ function createSettingsWindowRuntime(options = {}) {
         clearLiftTimer();
         clearSaveBoundsTimer();
         clearRecapChangedTimer();
+        clearFullscreenBlurTimer();
+        summonedInFullscreenSpace = false;
         if (moveTextScaleTimer) {
           clearScheduled(moveTextScaleTimer);
           moveTextScaleTimer = null;

@@ -208,4 +208,137 @@ describe("Phase A: halo proximity and macOS window lifecycle", () => {
     assert.equal(hidden, 2);
     fs.rmSync(tmp, { recursive: true, force: true });
   });
+
+  it("hides Settings on blur ONLY in fullscreen Spaces when app loses focus, and keeps it open on ordinary Desktop Spaces", async () => {
+    let inFullscreen = false;
+    let appActive = false;
+    let hiddenCount = 0;
+    let createdWin = null;
+    class FakeWindow extends EventEmitter {
+      constructor() {
+        super();
+        createdWin = this;
+        this._visible = false;
+        this._focused = false;
+        this.webContents = new EventEmitter();
+        this.webContents.send = () => {};
+        this.webContents.isDestroyed = () => false;
+      }
+      isDestroyed() { return false; }
+      isVisible() { return this._visible; }
+      isFocused() { return this._focused; }
+      isMinimized() { return false; }
+      show() { this._visible = true; this._focused = true; }
+      hide() { this._visible = false; this._focused = false; hiddenCount += 1; }
+      focus() { this._focused = true; }
+      moveTop() {}
+      setTitle() {}
+      setMenuBarVisibility() {}
+      loadFile() { return Promise.resolve(); }
+      getBounds() { return { x: 100, y: 100, width: 800, height: 660 }; }
+      getNormalBounds() { return { x: 100, y: 100, width: 800, height: 660 }; }
+    }
+    const rt = createSettingsWindowRuntime({
+      app: { isPackaged: false, isReady: () => true, getAppPath: () => "/tmp", focus: () => {} },
+      BrowserWindow: FakeWindow,
+      nativeTheme: { shouldUseDarkColors: true },
+      platform: "darwin",
+      isMac: true,
+      isWin: false,
+      isAppQuitting: () => false,
+      isActiveMacSpaceFullscreen: () => inFullscreen,
+      isMacAppActive: () => appActive,
+    });
+
+    // 1. Ordinary desktop Space: clicking another app must NOT hide Settings (it drops behind naturally).
+    rt.open();
+    createdWin.emit("ready-to-show");
+    createdWin._focused = false;
+    appActive = false;
+    createdWin.emit("blur");
+    await new Promise((r) => setTimeout(r, 90));
+    assert.equal(hiddenCount, 0);
+    assert.equal(createdWin.isVisible(), true);
+
+    // 2. Fullscreen Space while focus stays inside Character OS: must NOT hide.
+    inFullscreen = true;
+    appActive = true;
+    rt.open();
+    createdWin._focused = false;
+    createdWin.emit("blur");
+    await new Promise((r) => setTimeout(r, 90));
+    assert.equal(hiddenCount, 1); // 1 from summon detach before reshow, NOT from blur!
+    assert.equal(createdWin.isVisible(), true);
+
+    // 3. Fullscreen Space when clicking another app (appActive=false): MUST hide to avoid covering fullscreen app.
+    appActive = false;
+    createdWin._focused = false;
+    createdWin.emit("blur");
+    await new Promise((r) => setTimeout(r, 90));
+    assert.equal(hiddenCount, 2);
+    assert.equal(createdWin.isVisible(), false);
+  });
+
+  it("activates app, restores mouse input, and focuses webContents on repeated Command opens", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "char-cmd-focus-"));
+    let createdWin = null;
+    let appFocusCalls = 0;
+    let wcFocusCalls = 0;
+    let ignoreMouseCalls = [];
+    let focusableCalls = [];
+    class FakeWin extends EventEmitter {
+      constructor() {
+        super();
+        createdWin = this;
+        this._visible = false;
+        this._focused = false;
+        this.webContents = new EventEmitter();
+        this.webContents.send = () => {};
+        this.webContents.focus = () => { wcFocusCalls += 1; };
+        this.webContents.isDestroyed = () => false;
+        this.webContents.setWindowOpenHandler = () => {};
+        this.webContents.isLoading = () => false;
+      }
+      isDestroyed() { return false; }
+      isVisible() { return this._visible; }
+      isFocused() { return this._focused; }
+      isMinimized() { return false; }
+      setIgnoreMouseEvents(v) { ignoreMouseCalls.push(v); }
+      setFocusable(v) { focusableCalls.push(v); }
+      show() { this._visible = true; }
+      hide() { this._visible = false; this._focused = false; this.emit("blur"); }
+      focus() { this._focused = true; }
+      setTitle() {}
+      setAlwaysOnTop() {}
+      getSize() { return [520, 60]; }
+      setPosition() {}
+      getContentSize() { return [520, 60]; }
+      setContentSize() {}
+      loadFile() { return Promise.resolve(); }
+    }
+    const cmd = createChatWindow({
+      app: { getPath: () => tmp, focus: () => { appFocusCalls += 1; } },
+      BrowserWindow: FakeWin,
+      ipcMain: { handle: () => {}, on: () => {} },
+      nativeTheme: { shouldUseDarkColors: true },
+      safeStorage: { isEncryptionAvailable: () => false },
+      shell: { openExternal: () => Promise.resolve() },
+      getLang: () => "zh",
+      isAppQuitting: () => false,
+    });
+
+    cmd.open();
+    createdWin.emit("ready-to-show");
+    assert.ok(appFocusCalls >= 1);
+    assert.ok(wcFocusCalls >= 1);
+    assert.equal(createdWin.isVisible(), true);
+
+    // Repeated open across Space (triggers internal hide->show) must NOT blur-hide itself
+    cmd.open();
+    assert.equal(createdWin.isVisible(), true);
+    assert.equal(ignoreMouseCalls.every((v) => v === false), true);
+    assert.equal(focusableCalls.every((v) => v === true), true);
+
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
 });

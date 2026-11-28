@@ -635,7 +635,14 @@ function initPetHalo(ctx) {
       const type = payload.type;
       hoverActive = false;
       stopAutoHidePoll();
-      hideHaloAnimated();
+      // Hide the non-focusable halo panel synchronously before opening Command
+      // or Workspace so a delayed 150ms halo.hide() never races with macOS key-window
+      // activation of the newly opened window.
+      if (type === "open-workspace" || type === "open-command") {
+        hideHaloImmediate();
+      } else {
+        hideHaloAnimated();
+      }
       if (type === "open-workspace" && typeof ctx.openDashboard === "function") {
         const view = typeof payload.view === "string" ? payload.view : undefined;
         ctx.openDashboard({ source: "halo", ...(view ? { view } : {}) });

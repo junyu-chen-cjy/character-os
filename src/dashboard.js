@@ -13,6 +13,8 @@ const { createDashboardHost } = require("./dashboard-host");
 const { createDashboardQuickMode } = require("./dashboard-quick-mode");
 const {
   applyActiveSpaceWindowBehavior,
+  isActiveMacSpaceFullscreen,
+  isMacAppActive,
   summonMacWindowToActiveSpace,
 } = require("./mac-window");
 
@@ -102,8 +104,24 @@ module.exports = function initDashboard(ctx) {
   let programmaticBoundsMutationDepth = 0;
   let pendingUserBounds = null;
   let pendingUserBoundsRevision = 0;
+  let summonedInFullscreenSpace = false;
+  let isSummoningWindow = false;
+  let fullscreenBlurTimer = null;
+  const isFullscreenSpaceFn = typeof ctx.isActiveMacSpaceFullscreen === "function"
+    ? ctx.isActiveMacSpaceFullscreen
+    : isActiveMacSpaceFullscreen;
+  const isAppActiveFn = typeof ctx.isMacAppActive === "function"
+    ? ctx.isMacAppActive
+    : isMacAppActive;
+  const appRef = ctx.app || electron.app || null;
   const scheduleLater = typeof ctx.setTimeout === "function" ? ctx.setTimeout : setTimeout;
   const clearScheduled = typeof ctx.clearTimeout === "function" ? ctx.clearTimeout : clearTimeout;
+
+  function clearFullscreenBlurTimer() {
+    if (!fullscreenBlurTimer) return;
+    clearScheduled(fullscreenBlurTimer);
+    fullscreenBlurTimer = null;
+  }
 
   function scheduleTimer(callback, delayMs) {
     const timer = scheduleLater(callback, delayMs);
@@ -549,6 +567,10 @@ module.exports = function initDashboard(ctx) {
     let focusingOwnedPage = false;
     dashboardWindow.on("focus", () => {
       if (dashboardWindow !== createdWindow) return;
+      clearFullscreenBlurTimer();
+      if (platform === "darwin" && isFullscreenSpaceFn()) {
+        summonedInFullscreenSpace = true;
+      }
       if (focusingOwnedPage) return;
       quickMode.handleNormalHostFocus();
       if (!shouldGivePageKeyboard()) return;
@@ -559,9 +581,28 @@ module.exports = function initDashboard(ctx) {
       try { focusOwnedWebContents(); } finally { focusingOwnedPage = false; }
     });
     // An in-place round lives on this window, so its blur ends the round.
+    // Inside a native macOS Fullscreen Space, FullScreenAuxiliary windows cannot
+    // natively drop behind the FullScreenPrimary window even at NSNormalWindowLevel;
+    // when focus actually leaves Character OS to another app in a fullscreen Space,
+    // hide Workspace cleanly (preserving full state) so it never blocks the user.
+    // On ordinary Desktop Spaces, do nothing so macOS layers Workspace behind normally.
     dashboardWindow.on("blur", () => {
       if (dashboardWindow !== createdWindow) return;
       quickMode.handleNormalHostBlur();
+      if (platform !== "darwin" || isSummoningWindow || isAppQuitting() || quickMode.isShown()) return;
+      clearFullscreenBlurTimer();
+      fullscreenBlurTimer = scheduleTimer(() => {
+        fullscreenBlurTimer = null;
+        if (dashboardWindow !== createdWindow || createdWindow.isDestroyed()) return;
+        if (isSummoningWindow || isAppQuitting() || quickMode.isShown()) return;
+        if (typeof createdWindow.isVisible === "function" && !createdWindow.isVisible()) return;
+        if (typeof createdWindow.isFocused === "function" && createdWindow.isFocused()) return;
+        const inFullscreen = summonedInFullscreenSpace || isFullscreenSpaceFn();
+        if (!inFullscreen) return;
+        if (isAppActiveFn()) return;
+        summonedInFullscreenSpace = false;
+        if (typeof createdWindow.hide === "function") createdWindow.hide();
+      }, 60);
     });
     // On macOS, minimizing to the Dock creates a lingering thumbnail tile on
     // the right side of the Dock; hide the window instead and restore cleanly
@@ -604,13 +645,22 @@ module.exports = function initDashboard(ctx) {
       if (!autoShow) return;
       applySettingsPlacement(options);
       if (platform === "darwin") {
-        runProgrammaticBoundsMutation(() => {
-          summonMacWindowToActiveSpace(dashboardWindow, {
-            getActiveWorkArea: options.source === "settings" ? null : ctx.getActiveWorkArea,
-            skipHideDetach: true,
+        isSummoningWindow = true;
+        clearFullscreenBlurTimer();
+        try {
+          runProgrammaticBoundsMutation(() => {
+            const res = summonMacWindowToActiveSpace(dashboardWindow, {
+              getActiveWorkArea: options.source === "settings" ? null : ctx.getActiveWorkArea,
+              skipHideDetach: true,
+              app: appRef,
+              isFullscreenSpaceFn,
+            });
+            summonedInFullscreenSpace = Boolean(res?.inFullscreenSpace || isFullscreenSpaceFn());
+            rebaseProgrammaticBounds(dashboardWindow);
           });
-          rebaseProgrammaticBounds(dashboardWindow);
-        });
+        } finally {
+          isSummoningWindow = false;
+        }
       } else {
         dashboardWindow.show();
       }
@@ -642,6 +692,8 @@ module.exports = function initDashboard(ctx) {
     });
     dashboardWindow.on("closed", () => {
       clearSaveBoundsTimer();
+      clearFullscreenBlurTimer();
+      summonedInFullscreenSpace = false;
       if (moveTextScaleTimer) {
         clearScheduled(moveTextScaleTimer);
         moveTextScaleTimer = null;
@@ -744,12 +796,21 @@ module.exports = function initDashboard(ctx) {
       }
       applySettingsPlacement(options);
       if (platform === "darwin") {
-        runProgrammaticBoundsMutation(() => {
-          summonMacWindowToActiveSpace(dashboardWindow, {
-            getActiveWorkArea: options.source === "settings" ? null : ctx.getActiveWorkArea,
+        isSummoningWindow = true;
+        clearFullscreenBlurTimer();
+        try {
+          runProgrammaticBoundsMutation(() => {
+            const res = summonMacWindowToActiveSpace(dashboardWindow, {
+              getActiveWorkArea: options.source === "settings" ? null : ctx.getActiveWorkArea,
+              app: appRef,
+              isFullscreenSpaceFn,
+            });
+            summonedInFullscreenSpace = Boolean(res?.inFullscreenSpace || isFullscreenSpaceFn());
+            rebaseProgrammaticBounds(dashboardWindow);
           });
-          rebaseProgrammaticBounds(dashboardWindow);
-        });
+        } finally {
+          isSummoningWindow = false;
+        }
       } else {
         dashboardWindow.show();
       }

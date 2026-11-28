@@ -22,17 +22,30 @@ html:not([data-platform="mac"]) .cmd { box-shadow: var(--shadow-float); }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 
 /* ── input row ── */
+/* Keep -webkit-app-region: drag isolated ONLY on the left .mark grip icon —
+   NEVER on the .bar ancestor of #message, because Chromium's macOS draggable
+   region mask can desync across dynamic resizes / hide-show cycles and eat
+   mouse clicks, I-beam cursor tracking, and text selection inside #message. */
 .bar {
   display: flex;
   align-items: flex-start;
   gap: 12px;
   padding: 0 12px 0 18px;
   min-height: 60px;
-  -webkit-app-region: drag;
+  -webkit-app-region: no-drag;
 }
 .bar > * { -webkit-app-region: no-drag; }
-.mark { flex: none; display: grid; place-items: center; width: 20px; height: 60px; color: var(--text-3); -webkit-app-region: drag; }
-.mark svg { width: 20px; height: 20px; }
+.mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 60px;
+  color: var(--text-3);
+  cursor: grab;
+  -webkit-app-region: drag;
+}
+.mark svg { width: 20px; height: 20px; pointer-events: none; }
 #message {
   flex: 1;
   min-width: 0;
@@ -47,9 +60,13 @@ html:not([data-platform="mac"]) .cmd { box-shadow: var(--shadow-float); }
   color: var(--text);
   max-height: 168px;
   caret-color: var(--accent);
+  cursor: text;
+  user-select: text;
+  -webkit-user-select: text;
+  -webkit-app-region: no-drag;
 }
 #message::placeholder { color: var(--text-3); }
-.trail { flex: none; display: flex; align-items: center; gap: 4px; height: 60px; }
+.trail { flex: none; display: flex; align-items: center; gap: 4px; height: 60px; -webkit-app-region: no-drag; }
 
 .round {
   appearance: none;
@@ -85,15 +102,46 @@ html:not([data-platform="mac"]) .cmd { box-shadow: var(--shadow-float); }
 .link:hover { color: var(--accent-hi); text-decoration: underline; text-underline-offset: 2px; }
 
 /* ── conversation ── */
+.body-wrap {
+  position: relative;
+  -webkit-app-region: no-drag;
+}
+.body-wrap:not(.has-content) { display: none; }
 .body {
   border-top: 1px solid var(--line);
   max-height: 452px;
   overflow-y: auto;
   overscroll-behavior: contain;
+  -webkit-app-region: no-drag;
 }
 .body:not(.has-content) { display: none; }
-.transcript { display: flex; flex-direction: column; gap: 14px; padding: 16px 20px 18px; }
-.message { font-size: 14px; line-height: 1.55; user-select: text; -webkit-user-select: text; overflow-wrap: anywhere; }
+.scroll-bottom {
+  position: absolute;
+  right: 14px;
+  bottom: 12px;
+  z-index: 2;
+  appearance: none;
+  border: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--surface-3);
+  color: var(--text);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28), inset 0 0 0 0.5px var(--line-2);
+  cursor: pointer;
+  transition: background var(--dur-1) var(--ease), transform 80ms var(--ease), opacity var(--dur-1) var(--ease);
+}
+.scroll-bottom svg { width: 14px; height: 14px; }
+.scroll-bottom:hover { background: var(--accent); color: var(--on-accent); }
+.scroll-bottom:active { transform: scale(0.92); }
+.transcript { display: flex; flex-direction: column; gap: 14px; padding: 16px 20px 18px; -webkit-app-region: no-drag; }
+.message { font-size: 14px; line-height: 1.55; user-select: text; -webkit-user-select: text; cursor: text; overflow-wrap: anywhere; }
+.message .markdown, .message .markdown *, .confirm-msg, .step-error, .reply-detail {
+  user-select: text;
+  -webkit-user-select: text;
+}
 .message.user {
   align-self: flex-end;
   max-width: 88%;
@@ -182,6 +230,7 @@ html:not([data-platform="mac"]) .cmd { box-shadow: var(--shadow-float); }
 .tool:last-child:hover { color: var(--text); }
 
 /* hide the chat body while a sheet/list owns the space */
+.cmd[data-view="history"] .body-wrap, .cmd[data-view="model"] .body-wrap,
 .cmd[data-view="history"] .body, .cmd[data-view="model"] .body { display: none; }
 
 /* ── compact agent tool steps & inline confirmation (Graphite) ── */
